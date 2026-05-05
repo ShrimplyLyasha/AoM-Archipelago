@@ -467,10 +467,10 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     lines.append("}")
 
     # APApplyMinorGodSelection — called from APApplyAgeUnlocks() every time items
-    # are processed.  Sets exactly ONE minor-god tech per age tier to the correct
-    # status (2 for floor tiers, 1 for above-floor tiers when ageCount allows,
-    # 0 otherwise) and forces the rejected option to 0.  This replaces the old
-    # "both options at status 1" logic in APApplyGreekMinorGods etc.
+    # are processed. For floor tiers (tier <= starting age) the seeded "chosen"
+    # minor god is researched (status 2) and the other forced to 0. For above-
+    # floor tiers, both options are made researchable (status 1) once ageCount
+    # >= tier so the player picks freely; otherwise both are 0.
     lines.append("")
     lines.append("void APApplyMinorGodSelection(int ageCount = 0)")
     lines.append("{")
@@ -490,9 +490,19 @@ def write_aom_state(ctx: AoMGameContext) -> None:
                     lines.append(f"        trTechSetStatus(1, {chosen}, 2);")
                     lines.append(f"        trTechSetStatus(1, {rejected}, 0);")
                 else:
-                    lines.append(f"        if (ageCount >= {tier}) {{ trTechSetStatus(1, {chosen}, 1); }}")
-                    lines.append(f"        else {{ trTechSetStatus(1, {chosen}, 0); }}")
-                    lines.append(f"        trTechSetStatus(1, {rejected}, 0);")
+                    # Above-floor tier: both options researchable once the player
+                    # has enough age unlocks. Don't force one — let the player
+                    # pick freely between the two minor gods at age-up.
+                    lines.append(f"        if (ageCount >= {tier})")
+                    lines.append(f"        {{")
+                    lines.append(f"            trTechSetStatus(1, {chosen}, 1);")
+                    lines.append(f"            trTechSetStatus(1, {rejected}, 1);")
+                    lines.append(f"        }}")
+                    lines.append(f"        else")
+                    lines.append(f"        {{")
+                    lines.append(f"            trTechSetStatus(1, {chosen}, 0);")
+                    lines.append(f"            trTechSetStatus(1, {rejected}, 0);")
+                    lines.append(f"        }}")
             lines.append("    }")
     lines.append("}")
 
