@@ -3,7 +3,6 @@ from BaseClasses import Location, MultiWorld, Region
 from ..locations.Campaigns import aomCampaignData
 from ..locations.Locations import (
     REGION_TO_LOCATIONS, aomLocationData, aomLocationType,
-    WAY_TO_ATLANTIS_LOCATION_ID, WAY_TO_ATLANTIS_LOCATION_NAME,
 )
 from ..locations.Scenarios import CAMPAIGN_TO_SCENARIOS, aomScenarioData
 
@@ -108,13 +107,6 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
     """
     # Root region
     menu_region = create_region(multiworld, player, MENU_REGION_NAME)
-
-    # "The Way to Atlantis" lives in the Menu region — always reachable.
-    # Rules.py locks the Atlantis Key here (with completion rule) in beat_x mode.
-    # In other modes it is a free location filled by the item pool.
-    from BaseClasses import Location as _Location
-    _way = _Location(player, WAY_TO_ATLANTIS_LOCATION_NAME, WAY_TO_ATLANTIS_LOCATION_ID, menu_region)
-    menu_region.locations.append(_way)
 
     # Skip alternate campaigns when their YAML toggle is disabled.
     disabled_campaigns = getattr(multiworld.worlds[player], "disabled_campaigns", set())

@@ -1162,7 +1162,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_1_OBJ_3 = (
         global_location_id(aomScenarioData.NA_1.id, 4),
-        "Defeat the barbarians guarding the Sky Passage",
+        "Defeat the barbarians at the Sky Passage",
         aomScenarioData.NA_1,
         aomLocationType.OBJECTIVE,
     )
@@ -1194,7 +1194,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_2_OBJ_1 = (
         global_location_id(aomScenarioData.NA_2.id, 2),
-        "Repair the ancient Temples to Kronos and Oranos",
+        "Repair the Temples to Kronos and Oranos",
         aomScenarioData.NA_2,
         aomLocationType.OBJECTIVE,
     )
@@ -1246,7 +1246,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_4_OBJ_1 = (
         global_location_id(aomScenarioData.NA_4.id, 2),
-        "Replace all Norse Temples with Atlantean Temples",
+        "Replace all Norse Temples with Your Temples",
         aomScenarioData.NA_4,
         aomLocationType.OBJECTIVE,
     )
@@ -1278,7 +1278,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_5_OBJ_1 = (
         global_location_id(aomScenarioData.NA_5.id, 2),
-        "Garrison all four sacred Relics into Kronos Temple",
+        "Garrison all four Relics into the Temple",
         aomScenarioData.NA_5,
         aomLocationType.OBJECTIVE,
     )
@@ -1304,7 +1304,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_6_OBJ_1 = (
         global_location_id(aomScenarioData.NA_6.id, 2),
-        "Bring soldiers to the Temple to the north",
+        "Bring soldiers to the northern Temple",
         aomScenarioData.NA_6,
         aomLocationType.OBJECTIVE,
     )
@@ -1316,7 +1316,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_6_OBJ_3 = (
         global_location_id(aomScenarioData.NA_6.id, 4),
-        "Bring Kastor to the peak of Mount Olympus",
+        "Bring Kastor to the peak of Olympus",
         aomScenarioData.NA_6,
         aomLocationType.OBJECTIVE,
     )
@@ -1342,7 +1342,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_7_OBJ_1 = (
         global_location_id(aomScenarioData.NA_7.id, 2),
-        "Build up a base and survive the Titan's onslaught",
+        "Survive the Titan's onslaught",
         aomScenarioData.NA_7,
         aomLocationType.OBJECTIVE,
     )
@@ -1374,7 +1374,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_8_OBJ_2 = (
         global_location_id(aomScenarioData.NA_8.id, 3),
-        "Destroy the Titan Cerberus",
+        "Destroy Cerberus",
         aomScenarioData.NA_8,
         aomLocationType.OBJECTIVE,
     )
@@ -1400,7 +1400,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_9_OBJ_2 = (
         global_location_id(aomScenarioData.NA_9.id, 3),
-        "Kill the Titan Ymir",
+        "Kill Ymir",
         aomScenarioData.NA_9,
         aomLocationType.OBJECTIVE,
     )
@@ -1426,7 +1426,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_10_OBJ_2 = (
         global_location_id(aomScenarioData.NA_10.id, 3),
-        "Destroy the Titan Prometheus",
+        "Destroy Prometheus",
         aomScenarioData.NA_10,
         aomLocationType.OBJECTIVE,
     )
@@ -1464,7 +1464,7 @@ class aomLocationData(enum.IntEnum):
     )
     NA_11_OBJ_4 = (
         global_location_id(aomScenarioData.NA_11.id, 5),
-        "Kastor Amanra and Ajax must enter Krios's Sky Passage",
+        "Garrison Kastor, Amanra, and Ajax in Krios' Sky Passage",
         aomScenarioData.NA_11,
         aomLocationType.OBJECTIVE,
     )
@@ -1484,13 +1484,13 @@ class aomLocationData(enum.IntEnum):
     )
     NA_12_OBJ_1 = (
         global_location_id(aomScenarioData.NA_12.id, 2),
-        "Invoke the Seed of Gaia on all four sacred Gaia Pools",
+        "Invoke Seed of Gaia on all four Pools",
         aomScenarioData.NA_12,
         aomLocationType.OBJECTIVE,
     )
     NA_12_OBJ_2 = (
         global_location_id(aomScenarioData.NA_12.id, 3),
-        "Protect at least one Summoning Tree until Gaia appears",
+        "Protect a Summoning Tree until Gaia appears",
         aomScenarioData.NA_12,
         aomLocationType.OBJECTIVE,
     )
@@ -1520,7 +1520,7 @@ class aomLocationData(enum.IntEnum):
     )
     GG_1_OBJ_1 = (
         global_location_id(aomScenarioData.GG_1.id, 2),
-        "Bring Brokk and four Ox Carts to the flagged tunnel entrance",
+        "Bring Brokk and four Ox Carts to the tunnel entrance",
         aomScenarioData.GG_1,
         aomLocationType.OBJECTIVE,
     )
@@ -1546,7 +1546,7 @@ class aomLocationData(enum.IntEnum):
     )
     GG_2_OBJ_2 = (
         global_location_id(aomScenarioData.GG_2.id, 3),
-        "Bring Eitri and six Dwarves to the entrance to the mines",
+        "Bring Eitri and six Villagers to the mine entrance",
         aomScenarioData.GG_2,
         aomLocationType.OBJECTIVE,
     )
@@ -1859,15 +1859,6 @@ class aomLocationData(enum.IntEnum):
 
 
 
-# -----------------------------------------------------------------------
-# Special meta-location: "The Way to Atlantis"
-# This location lives in the Menu region (not inside any scenario).
-# In beat_x_scenarios mode, the Atlantis Key is locked here and the
-# location requires X scenario completions to access.
-# In other modes, this is a regular free location.
-# -----------------------------------------------------------------------
-WAY_TO_ATLANTIS_LOCATION_ID   = BASE_ID + 99000
-WAY_TO_ATLANTIS_LOCATION_NAME = "The Way to Atlantis"
 
 location_from_id: dict[int, aomLocationData] = {
     location.id: location for location in aomLocationData
@@ -1905,9 +1896,6 @@ COMPLETION_LOCATIONS: dict[aomScenarioData, aomLocationData] = {
     for location in TYPE_TO_LOCATIONS.get(aomLocationType.COMPLETION, [])
 }
 
-# Register the special meta-location in the global lookup tables
-location_name_to_id[WAY_TO_ATLANTIS_LOCATION_NAME] = WAY_TO_ATLANTIS_LOCATION_ID
-location_id_to_name[WAY_TO_ATLANTIS_LOCATION_ID]   = WAY_TO_ATLANTIS_LOCATION_NAME
 
 
 # -----------------------------------------------------------------------

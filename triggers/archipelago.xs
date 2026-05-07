@@ -1150,7 +1150,7 @@ string APGetCheckText(int id = 0)
     if (id == 3917228) { return "Bring Kastor to the peak of Mount Olympus."; }
     if (id == 3917229) { return "Protect the Underworld Passage."; }
     if (id == 3917324) { return "Scenario Victory"; }
-    if (id == 3917326) { return "Build up a base and survive the Titan's onslaught."; }
+    if (id == 3917326) { return "Survive the Titan's onslaught."; }
     if (id == 3917327) { return "Send three Rocs to Kastor's Town Center."; }
     if (id == 3917424) { return "Scenario Victory"; }
     if (id == 3917426) { return "Protect the Son of Osiris while he recharges the Guardian."; }

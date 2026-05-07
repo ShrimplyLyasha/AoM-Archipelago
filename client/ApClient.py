@@ -206,11 +206,11 @@ def _get_atlantis_status(ctx: "AoMContext") -> tuple[str, bool]:
         return ("You have the Atlantis Key! Atlantis is Open!", True)
 
     if final_mode == 0 and threshold is not None:
-        # beat_x_scenarios mode
+        # beat_x_scenarios mode — no key item; Final section opens on completion count
         beaten = _count_beaten_scenarios(ctx)
         if beaten >= threshold:
-            return ("You have the Atlantis Key! Atlantis is Open!", True)
-        return (f"Missions Beaten for Atlantis Key: {beaten} / {threshold}", False)
+            return ("Atlantis is Open!", True)
+        return (f"Missions Beaten for Atlantis: {beaten} / {threshold}", False)
 
     if final_mode == 2:
         # atlantis_key mode — key is somewhere in the multiworld
@@ -273,7 +273,7 @@ def _format_progress(ctx: "AoMContext") -> str:
         return ""
     beaten = _count_beaten_scenarios(ctx)
     if beaten >= threshold:
-        return f"Scenarios beaten: {beaten} / {threshold} — Atlantis Key unlocked!"
+        return f"Scenarios beaten: {beaten} / {threshold} — Atlantis is Open!"
     return f"Scenarios beaten: {beaten} / {threshold}"
 
 
@@ -377,9 +377,9 @@ class AoMCommandProcessor(ClientCommandProcessor):
             if stats["beaten"]:
                 beaten_list.append(name)
                 if missing > 0:
-                    in_progress.append(f"{name} ({stats['checked']}/{stats['total']} objectives — beaten, {missing} missing)")
+                    in_progress.append(f"{name} ({stats['checked']}/{stats['total']} checks — beaten, {missing} missing)")
             elif stats["checked"] > 0:
-                in_progress.append(f"{name} ({stats['checked']}/{stats['total']} objectives)")
+                in_progress.append(f"{name} ({stats['checked']}/{stats['total']} checks)")
             else:
                 untouched_list.append(name)
 
@@ -1154,7 +1154,7 @@ class AoMContext(CommonContext):
             # Completion locations have local_id=1 (victory=0), so completion_id
             # is always victory_id + 1. This grants the FOTT_N Complete event
             # item in the player's AP state, which is required for:
-            #   - beat_x_scenarios Atlantis Key logic
+            #   - beat_x_scenarios final section completion-count gate
             #   - always_open / atlantis_key final section tracking
             completion_id = location_id + 1
             locations_to_send.append(completion_id)

@@ -556,6 +556,8 @@ def write_aom_state(ctx: AoMGameContext) -> None:
         if item_id not in received_set:
             for unit in units:
                 lines.append(f"    trForbidProtounit(1, \"{unit}\");")
+    # NA 7 (507) requires Rocs to complete — always unforbid them regardless of items.
+    lines.append("    if (gAPScenarioId == 507) { trUnforbidProtounit(1, \"Roc\"); }")
     lines.append("}")
 
     # NOTE: Previously emitted APUnforbidUnlockedUnits() here, which called

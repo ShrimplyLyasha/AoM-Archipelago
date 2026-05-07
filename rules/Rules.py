@@ -30,7 +30,6 @@ from ..items.Items import (
 from ..locations.Locations import (
     aomLocationData,
     aomLocationType,
-    WAY_TO_ATLANTIS_LOCATION_NAME,
     VICTORY_LOCATIONS,
     ALL_SHOP_ITEM_IDS,
     ALL_PROGRESSIVE_INFO_IDS,
@@ -199,26 +198,26 @@ _SCENARIO_DATA: dict[int, tuple[int, int, float, bool, bool]] = {
     # ---------------------------------------------------------------------------
     # start_age_num: 1=Archaic,2=Classical,3=Heroic,4=Mythic
     # min_required_unlocks: 0=no advancement needed (exempt/no-TC), 3=must reach Mythic
-    501: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
+    501: (3, 0, 16.0, False, False),  # Heroic start, max Heroic — no age unlock needed
     502: (1, 1,  4.0, False, False),  # Archaic start; must reach Classical (Advance objective)
-    503: (3, 0,  0.0, True,  False),  # Heroic start, NO TC — always accessible
-    504: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
+    503: (3, 0,  0.0, False, False),  # Heroic start, NO TC — military unit required, capped at Heroic
+    504: (3, 0, 16.0, False, False),  # Heroic start, Heroic max — capped, no age unlock needed
     505: (3, 0, 16.0, False, False),  # Heroic start, Heroic max — point gate + military
     506: (4, 0,  0.0, True,  False),  # Mythic start, NO TC — always accessible
-    507: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
-    508: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
-    509: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
-    510: (3, 3, 16.0, False, False),  # Heroic start; must reach Mythic
+    507: (3, 0,  0.0, True,  False),  # always accessible — sphere 1
+    508: (3, 3, 16.0, False, False),  # Heroic start, Mythic max — 3 unlocks to reach Mythic
+    509: (3, 3, 16.0, False, False),  # Heroic start, Mythic max — 3 unlocks to reach Mythic
+    510: (3, 3, 16.0, False, False),  # Heroic start, Mythic max — 3 unlocks to reach Mythic
     511: (4, 0, 16.0, False, False),  # Mythic start, Mythic max — point gate + military
     512: (4, 0, 16.0, False, False),  # Mythic start, Mythic max — point gate + military
     # ---------------------------------------------------------------------------
     # The Golden Gift (APScenarioIDs 601-604)
-    # All start Heroic (start_age_num=3). min_required_unlocks=0 for Heroic-max
-    # scenarios (601,602,604); =1 for GG3 which can reach Mythic.
+    # All start Heroic (start_age_num=3). min_required_unlocks=0 for all:
+    # Heroic start means no unlock items needed to enter any of these scenarios.
     # ---------------------------------------------------------------------------
     601: (3, 0,  4.0,  False, False),  # Heroic start, Heroic max
     602: (3, 0,  4.0,  False, False),  # Heroic start, Heroic max
-    603: (3, 1,  9.0,  False, False),  # Heroic start, Mythic max (1 unlock enables Mythic)
+    603: (3, 0,  9.0,  False, False),  # Heroic start, Mythic max
     604: (4, 0,  0.0,  True,  False),  # Mythic start, no further advancement — always accessible
 }
 
@@ -379,6 +378,109 @@ def count_points(state: CollectionState, player: int, point_table: dict[str, flo
 
 
 # --------------------------------------------------
+# Age-capped scenarios: the player starts at a given age and cannot advance
+# beyond it (no TC, no Mythic temple, or scenario design cap).
+# Key = scenario global_number, value = max accessible age tier (0-3).
+# All units at tiers 0..max_tier are freely accessible with only the
+# corresponding 'Can train X' item — no age unlock items are required.
+# --------------------------------------------------
+
+# Scenarios where the starting age grants free access to all tiers up to the cap.
+# No age unlock items are needed; the player simply cannot advance beyond max_tier.
+_SCENARIO_AGE_CAP: dict[int, int] = {
+    501: 2,  # NA 1:  starts Heroic, max Heroic → capped at tier 2
+    503: 2,  # NA 3:  starts Heroic, no TC     → capped at tier 2
+    504: 2,  # NA 4:  starts Heroic, max Heroic → capped at tier 2
+    505: 2,  # NA 5:  starts Heroic, max Heroic → capped at tier 2
+    511: 3,  # NA 11: starts Mythic, max Mythic → capped at tier 3
+    512: 3,  # NA 12: starts Mythic, max Mythic → capped at tier 3
+    601: 2,  # GG 1:  starts Heroic, max Heroic → capped at tier 2
+    602: 2,  # GG 2:  starts Heroic, max Heroic → capped at tier 2
+}
+
+# Scenarios where the starting age gives free access to tiers 0-2, but tier 3
+# (Mythic) is still reachable with 3 age unlock items.
+# These are NOT in _SCENARIO_AGE_CAP; they use _make_heroic_floor_scenario_rule.
+_SCENARIO_HEROIC_FLOOR: set[int] = {
+    603,  # GG 3: Heroic start, Mythic max — Classical/Heroic units free, Mythic needs 3 unlocks
+}
+
+
+def _make_age_capped_scenario_rule(
+    player: int,
+    god_id: int,
+    max_tier: int,
+    point_table: dict[str, float],
+    points_needed: float,
+):
+    """Rule for scenarios whose max accessible age is fixed at scenario start.
+
+    The starting age is already granted, so no age unlock items are needed.
+    Any human or myth unit at tier <= max_tier puts the scenario in logic.
+    Tiers above max_tier (e.g. Mythic on a Heroic-capped scenario) never count.
+    """
+    god_civ = _GOD_TO_CIV.get(god_id, "Greek")
+
+    def rule(state: CollectionState) -> bool:
+        if count_points(state, player, point_table) < points_needed:
+            return False
+        for tier in range(0, max_tier + 1):
+            for unit_name in _HUMAN_UNITS.get(god_civ, {}).get(tier, []):
+                if state.has(unit_name, player):
+                    return True
+        for tier in range(1, max_tier + 1):
+            myth_name = _MYTH_ITEMS_BY_UNLOCK.get(god_civ, {}).get(tier)
+            if myth_name and state.has(myth_name, player):
+                return True
+        return False
+
+    return rule
+
+
+def _make_heroic_floor_scenario_rule(
+    player: int,
+    god_id: int,
+    point_table: dict[str, float],
+    points_needed: float,
+):
+    """Rule for Heroic-start, Mythic-max scenarios where the starting age floor
+    grants free access to tiers 0-2, but Mythic (tier 3) still requires 3 unlocks.
+
+    Used for scenarios like GG 3 where Classical and Heroic human/myth units are
+    immediately trainable, but advancing to Mythic requires age unlock items.
+    """
+    god_civ = _GOD_TO_CIV.get(god_id, "Greek")
+    unlock_names = _CIV_UNLOCK_NAMES[god_civ]
+
+    def rule(state: CollectionState) -> bool:
+        if count_points(state, player, point_table) < points_needed:
+            return False
+        # Tiers 0-2: freely accessible at Heroic start
+        for tier in range(0, 3):
+            for unit_name in _HUMAN_UNITS.get(god_civ, {}).get(tier, []):
+                if state.has(unit_name, player):
+                    return True
+        for tier in range(1, 3):
+            myth_name = _MYTH_ITEMS_BY_UNLOCK.get(god_civ, {}).get(tier)
+            if myth_name and state.has(myth_name, player):
+                return True
+        # Tier 3 (Mythic): needs 3 age unlock items
+        unlock_count = min(sum(state.count(n, player) for n in unlock_names), 3)
+        if unlock_count >= 3:
+            for unit_name in _HUMAN_UNITS.get(god_civ, {}).get(3, []):
+                if state.has(unit_name, player):
+                    return True
+            myth_name = _MYTH_ITEMS_BY_UNLOCK.get(god_civ, {}).get(3)
+            if myth_name and state.has(myth_name, player):
+                return True
+            if god_id in _GREEK_FREE_MYTHIC_GODS:
+                return True
+        return False
+
+    return rule
+
+
+# --------------------------------------------------
 # Per-scenario military + point rule factory
 # --------------------------------------------------
 
@@ -509,22 +611,6 @@ def place_completion_events(world) -> None:
 
 
 # --------------------------------------------------
-# Atlantis Key placement
-# --------------------------------------------------
-
-def place_atlantis_key(world) -> None:
-    if get_final_mode_value(world) != FinalScenarios.option_beat_x_scenarios:
-        return
-    player    = world.player
-    multiworld = world.multiworld
-    required  = get_x_scenarios_value(world)
-    location     = multiworld.get_location(WAY_TO_ATLANTIS_LOCATION_NAME, player)
-    atlantis_key = world.create_item(aomItemData.ATLANTIS_KEY.item_name)
-    location.place_locked_item(atlantis_key)
-    set_rule(location, lambda state: count_completed_scenarios(state, player) >= required)
-
-
-# --------------------------------------------------
 # Section access rules
 # --------------------------------------------------
 
@@ -555,7 +641,11 @@ def set_section_rules(world) -> None:
     if mode == FinalScenarios.option_always_open:
         _maybe_set(aomCampaignData.FOTT_FINAL, "Fall of the Trident: Final",
                    lambda state: True)
-    else:
+    elif mode == FinalScenarios.option_beat_x_scenarios:
+        required = get_x_scenarios_value(world)
+        _maybe_set(aomCampaignData.FOTT_FINAL, "Fall of the Trident: Final",
+                   lambda state, r=required: count_completed_scenarios(state, player) >= r)
+    else:  # atlantis_key
         _maybe_set(aomCampaignData.FOTT_FINAL, "Fall of the Trident: Final",
                    lambda state: state.has(aomItemData.ATLANTIS_KEY.item_name, player))
 
@@ -603,6 +693,22 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
 
         ent_name = entrance_name(section_for(n), scenario.region_name)
         entrance = multiworld.get_entrance(ent_name, player)
+
+        # Age-capped scenario: player cannot advance beyond the starting age.
+        # All units up to the capped tier are freely accessible without unlock items.
+        if n in _SCENARIO_AGE_CAP:
+            add_rule(entrance, _make_age_capped_scenario_rule(
+                player, god_id, _SCENARIO_AGE_CAP[n], point_table, points_needed,
+            ))
+            continue
+
+        # Heroic-floor scenario: tiers 0-2 are freely accessible (Heroic start),
+        # but Mythic (tier 3) still requires 3 age unlock items.
+        if n in _SCENARIO_HEROIC_FLOOR:
+            add_rule(entrance, _make_heroic_floor_scenario_rule(
+                player, god_id, point_table, points_needed,
+            ))
+            continue
 
         # Scenario 7: human unit unlocks don't count toward points,
         # no age or military unit unlock required — just 1 point of non-unit items.
@@ -836,7 +942,6 @@ def set_rules(world) -> None:
     place_completion_events(world)
     place_gems(world)
     place_progressive_shop_info(world)
-    place_atlantis_key(world)
     set_section_rules(world)
     set_scenario_age_and_point_rules(world, point_table)
     set_item_placement_restrictions(world)

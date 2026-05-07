@@ -349,10 +349,7 @@ class aomWorld(World):
     topology_present = True
 
     item_names = set(item.item_name for item in Items.aomItemData)
-    location_names = (
-        set(location.global_name() for location in Locations.aomLocationData)
-        | {Locations.WAY_TO_ATLANTIS_LOCATION_NAME}
-    )
+    location_names = set(location.global_name() for location in Locations.aomLocationData)
 
     item_name_to_id = Items.item_name_to_id
     item_id_to_name = Items.item_id_to_name
@@ -674,8 +671,8 @@ class aomWorld(World):
 
         Pool tiers (in order):
         1. Progression items — section unlocks, age unlocks, unit progression
-        2. Atlantis Key — always in pool unless beat_x mode (where it is locked
-           to "The Way to Atlantis" by Rules.py and not counted here)
+        2. Atlantis Key — in pool for atlantis_key mode only; beat_x mode gates
+           the Final section directly on completion count (no key item needed)
         3. Useful items — round-robined evenly across types
         4. Filler items — pad any remaining slots; also absorbs items removed
            by options (starting age unlocks, hero abilities disabled)
@@ -730,7 +727,7 @@ class aomWorld(World):
                 continue
 
             # Atlantis Key — always in pool EXCEPT in beat_x mode where Rules.py
-            # locks it to "The Way to Atlantis" (which is excluded from pool math)
+            # beat_x mode gates the Final section on completion count instead
             if item_type == Items.FinalUnlock:
                 if final_mode != FinalScenarios.option_beat_x_scenarios:
                     progression_pool.append(self.create_item(item.item_name))
@@ -936,9 +933,6 @@ class aomWorld(World):
             visible_location_count += len(Locations.ALL_SHOP_ITEM_IDS)
             # Progressive Shop Info hint slots are locked by
             # Rules.place_progressive_shop_info — do NOT add them.
-
-        if final_mode != FinalScenarios.option_beat_x_scenarios:
-            visible_location_count += 1  # Way to Atlantis is a free fill slot
 
         if len(progression_pool) > visible_location_count:
             raise ValueError(
