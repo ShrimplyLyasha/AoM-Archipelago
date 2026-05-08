@@ -4,7 +4,7 @@
 
 An [Archipelago](https://archipelago.gg) multiworld randomizer for the **Fall of the Trident** campaign in Age of Mythology: Retold.
 
-Current version: **0.5.4**
+Current version: **1.0.0**
 ---
 ## Video Tutorial:
 > https://youtu.be/Tjp0x-ZtOP0
