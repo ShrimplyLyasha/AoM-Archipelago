@@ -1,3 +1,46 @@
+# =============================================================================
+# Age of Mythology Retold — Region graph builder
+# =============================================================================
+#
+# Archipelago describes a player's world as a graph of `Region`s connected by
+# `Entrance`s.  Locations live inside Regions; reachability of a location =
+# reachability of its Region from `Menu`.
+#
+# Topology produced by this module:
+#
+#     Menu
+#      ├── Fall of the Trident: Greek          ── star ── 10 scenario regions
+#      ├── Fall of the Trident: Egyptian       ── star ── 10 scenario regions
+#      ├── Fall of the Trident: Norse          ── star ── 10 scenario regions
+#      ├── Fall of the Trident: Final          ── star ── 2  scenario regions
+#      ├── New Atlantis (optional)             ── star ── 12 scenario regions
+#      ├── Golden Gift  (optional)             ── star ── 4  scenario regions
+#      └── Shop         (optional)             ── all shop / hint locations
+#
+# Star topology is intentional: once a campaign section is unlocked, every
+# scenario in it is independently reachable.  Per-scenario access (age unlocks,
+# point requirements) is layered on top by `rules/Rules.py` via `set_rule()`
+# on the campaign→scenario entrances created here.
+#
+# This module is purely structural — it does NOT install access rules.  Rules
+# are applied by Rules.py after `create_regions` runs (Archipelago calls
+# `create_regions` then `create_items` then `set_rules` in that order).
+#
+# -----------------------------------------------------------------------------
+# EXTENDING
+# -----------------------------------------------------------------------------
+# * Adding a campaign: add it to `aomCampaignData` (locations/Campaigns.py).
+#   This module iterates over that enum, so new campaigns appear automatically
+#   provided their scenarios are listed in `aomScenarioData` and their
+#   locations populate `REGION_TO_LOCATIONS`.
+# * Adding a scenario: add the scenario record to `aomScenarioData` and its
+#   locations to `aomLocationData` — `create_regions` walks both.
+# * Adding an alternate region (e.g. a tavern hub): build a new region with
+#   `create_region`, connect it from `Menu` via `connect_regions`, and supply
+#   any locations.  Add a Rules.py rule for the entrance if access should be
+#   gated.
+# =============================================================================
+
 from BaseClasses import Location, MultiWorld, Region
 
 from ..locations.Campaigns import aomCampaignData
@@ -7,7 +50,8 @@ from ..locations.Locations import (
 from ..locations.Scenarios import CAMPAIGN_TO_SCENARIOS, aomScenarioData
 
 
-# Root region the player starts in.
+# Root region the player starts in — every reachability search starts here.
+# Rules.py uses this name when looking up the menu region.
 MENU_REGION_NAME = "Menu"
 
 
@@ -19,6 +63,17 @@ def create_region(
 ) -> Region:
     """
     Create a region and attach any locations passed in.
+
+    Args:
+        multiworld:  The Archipelago `MultiWorld`. The new region is appended
+                     to `multiworld.regions` so the framework can find it.
+        player:      Slot id of the local player. Every region/location is
+                     scoped per-player.
+        region_name: Display name. Must be unique within this player's slot
+                     and must match what Rules.py later expects (Rules.py
+                     resolves regions by string name).
+        locations:   Optional list of `aomLocationData` to attach to the
+                     region.  Each becomes an Archipelago `Location`.
 
     Victory locations get a real address (their globally-offset ID) so they
     appear in the data package and can hold normal items.
@@ -33,6 +88,10 @@ def create_region(
     Rules.py places locked event items (code=None) into the Completion locations.
     FOTT_32's visible Victory location remains a normal addressed location because it
     will hold the real Victory item from the item table, not an event item.
+
+    Caller of note: `create_regions` (this module) for every campaign and
+    scenario region; the gem shop block at the bottom of `create_regions`
+    when `gem_shop` is enabled.
     """
     region = Region(region_name, player, multiworld)
 
@@ -57,9 +116,21 @@ def create_region(
 
 def connect_regions(source: Region, target: Region, rule=None) -> None:
     """
-    Create a named one-way connection from source to target, with an optional rule.
+    Create a named one-way connection from `source` to `target`, with an
+    optional access rule.
 
-    The entrance naming format must match Rules.py exactly.
+    Args:
+        source: Region the entrance leaves.
+        target: Region the entrance enters.
+        rule:   Optional callable `(state) -> bool`.  If provided, the entrance
+                is only traversable when the rule returns True.  Most rules in
+                this project are installed later by Rules.py via
+                `set_rule(entrance, ...)` so this parameter is usually left
+                None at construction time.
+
+    The entrance name follows the convention `"{source} -> {target}"` exactly
+    so Rules.py can look the entrance up by formatted string.  Do NOT change
+    the format without updating every reference in Rules.py.
     """
     entrance = source.connect(target, name=f"{source.name} -> {target.name}")
     if rule is not None:
@@ -69,18 +140,24 @@ def connect_regions(source: Region, target: Region, rule=None) -> None:
 
 def get_campaign_region_name(campaign: aomCampaignData) -> str:
     """
-    Region name for a campaign section.
+    Return the display name used as a campaign-section region's `name`.
 
-    Example: 'Fall of the Trident: Greek'
+    Example: `aomCampaignData.FOTT_GREEK` → 'Fall of the Trident: Greek'.
+
+    Source of truth lives on the enum (`aomCampaignData.campaign_name`).
+    Rules.py references campaign regions through this helper to stay in sync.
     """
     return campaign.campaign_name
 
 
 def get_scenario_region_name(scenario: aomScenarioData) -> str:
     """
-    Region name for an individual scenario.
+    Return the display name used as an individual scenario region's `name`.
 
-    Uses enum-style names such as: 'FOTT_1', 'FOTT_22', etc.
+    Format: 'FOTT_1', 'FOTT_22', 'NEW_ATLANTIS_3', 'GOLDEN_GIFT_2', etc.
+    Each scenario's `region_name` comes from its `aomScenarioData` enum
+    member.  Rules.py uses this helper when applying per-scenario access
+    rules so any rename is centralized here.
     """
     return scenario.region_name
 

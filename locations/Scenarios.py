@@ -1,28 +1,87 @@
+# =============================================================================
+# Scenario catalog — every playable scenario across every campaign.
+# =============================================================================
+#
+# Each enum member here is referenced from regions/Regions.py (one Region
+# per scenario), locations/Locations.py (every location is anchored to a
+# scenario), and from __init__.py (random god / minor god generation walks
+# this enum).
+#
+# IDs:
+#   * `value` (== `id`)     — campaign.value * 100 + chapter, e.g. FOTT_GREEK
+#                              chapter 5 → 105.  Used by aomLocationData to
+#                              compute global location IDs.  Different from
+#                              `global_number`!
+#   * `global_number`       — the APScenarioID used by archipelago.xs to
+#                              identify the running scenario (`gAPScenarioId`).
+#                              FotT uses 1-32, New Atlantis 501-512, Golden
+#                              Gift 601-604.  This is the value the editor's
+#                              `trQuestVarSet("APScenarioID", N)` sets.
+#
+# Adding a scenario:
+#   1. Append a member here with a unique chapter-within-campaign and a
+#      `global_number` matching the APScenarioID range you want to use.
+#   2. Add its locations to `aomLocationData` in locations/Locations.py.
+#   3. In the AoMR scenario editor, set the matching APScenarioID in the
+#      scenario's Game Start trigger and `xsEnableRule("APActivateScenario")`.
+#   4. Update `__init__.py::_VANILLA_GODS` and `_SCENARIO_STARTING_AGE` so
+#      the random-god / starting-age machinery knows about it.
+#   5. If non-vanilla minor gods are needed, add to
+#      `_VANILLA_MINOR_GOD_TECHS` as well.
+#   6. Add per-scenario flags to archipelago.xs's `APGetStartingAgeCount`
+#      (and any campaign-specific helpers) so the runtime knows the floor age.
+# =============================================================================
+
 import enum
 
 from .Campaigns import aomCampaignData
 
 
 class aomScenarioData(enum.IntEnum):
+    """Every playable scenario.
+
+    The IntEnum value (and `id`) packs `campaign * 100 + chapter` to give a
+    stable but campaign-relative integer; `global_number` is the separate
+    APScenarioID the running game uses to identify itself.
+    """
     def __new__(cls, scenario_name: str, campaign: aomCampaignData, chapter: int, global_number: int):
+        """IntEnum constructor.  Combines `campaign.value` and `chapter` into
+        a single int that's also the enum's `value`.  See
+        Locations.py::location_id_for_scenario_chapter for how this is
+        used to address per-scenario locations."""
         value = campaign.value * 100 + chapter
         obj = int.__new__(cls, value)
         obj._value_ = value
         return obj
 
     def __init__(self, scenario_name: str, campaign: aomCampaignData, chapter: int, global_number: int) -> None:
+        """Args:
+            scenario_name: human-friendly title of the scenario
+                            (e.g. "Welcome Back").
+            campaign:      the parent `aomCampaignData` member.
+            chapter:       1-based chapter index within its campaign.
+            global_number: the APScenarioID the running game broadcasts via
+                            `trQuestVarSet("APScenarioID", N)`.  FotT uses
+                            1-32, New Atlantis 501-512, Golden Gift 601-604.
+        """
         self.id = self.value
         self.scenario_name = scenario_name
         self.campaign = campaign
         self.chapter = chapter
-        self.global_number = global_number  # 1-32 across all campaigns
+        self.global_number = global_number
 
     @property
     def region_name(self) -> str:
+        """The string used as the scenario's Region name in regions/Regions.py.
+        Defaults to the enum member name (e.g. 'FOTT_5', 'NA_1').  Rules.py
+        must reference scenarios using the same string."""
         return self.name
 
     @property
     def display_name(self) -> str:
+        """User-facing label.  FotT scenarios use the global numbering
+        ("5. Just Enough Rope"); other campaigns use a campaign-mnemonic
+        prefix ("NA 3. Greetings From Greece") to disambiguate."""
         if self.campaign.value <= 4:
             return f"{self.global_number}. {self.scenario_name}"
         return f"{self.campaign.mnemonic} {self.chapter}. {self.scenario_name}"
@@ -87,14 +146,22 @@ class aomScenarioData(enum.IntEnum):
     GG_4  = ("Loki's Temples",        aomCampaignData.GOLDEN_GIFT,  4, 604)
 
 
+# --- Lookup tables, all built once at import time ---
+
+# scenario.id (campaign*100+chapter) → enum member.  Used by Locations.py to
+# resolve per-scenario locations from packed ids.
 scenario_from_id: dict[int, aomScenarioData] = {
     scenario.id: scenario for scenario in aomScenarioData
 }
 
+# Display titles in enum order — used by some logging utilities.
 scenario_names: list[str] = [
     scenario.scenario_name for scenario in aomScenarioData
 ]
 
+# Campaign → list of its scenarios in declaration order.  Consumed by
+# regions/Regions.py when iterating a campaign's scenarios and by Rules.py
+# when applying per-section progress requirements.
 CAMPAIGN_TO_SCENARIOS: dict[aomCampaignData, list[aomScenarioData]] = {
     campaign: [] for campaign in aomCampaignData
 }

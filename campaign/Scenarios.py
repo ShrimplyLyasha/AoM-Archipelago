@@ -1,3 +1,12 @@
+# =============================================================================
+# DEPRECATED — duplicate of `aom/locations/Scenarios.py`.
+# =============================================================================
+# This module exists only as a legacy artifact.  Active code imports from
+# `aom.locations.Scenarios` (see Regions.py, Rules.py, GameClient.py).  Do not
+# add new content here.  If you need to add scenarios, edit:
+#     aom/locations/Scenarios.py
+# This file can be safely deleted in a future cleanup pass.
+# =============================================================================
 import enum
 
 from .Campaigns import aomCampaignData

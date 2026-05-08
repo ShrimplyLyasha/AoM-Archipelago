@@ -1,3 +1,16 @@
+# =============================================================================
+# DEPRECATED — duplicate of `aom/locations/Campaigns.py`.
+# =============================================================================
+# This module exists only as a legacy artifact.  No live import path references
+# `aom.campaign.Campaigns` — every consumer imports from
+# `aom.locations.Campaigns` instead (see grep over `from ..locations.Campaigns`
+# / `from .Campaigns` inside the locations package).  Do not add new content
+# here.  If you need to extend campaign metadata, edit the canonical file:
+#     aom/locations/Campaigns.py
+# This file is preserved to avoid breaking any external scripts that may have
+# imported it during early prototyping; it can safely be deleted in a future
+# cleanup pass once we've verified nothing depends on it.
+# =============================================================================
 import enum
 
 

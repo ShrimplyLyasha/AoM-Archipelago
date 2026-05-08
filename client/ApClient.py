@@ -1,3 +1,51 @@
+# =============================================================================
+# Age of Mythology Retold — Archipelago client (CLI + Tk GUI)
+# =============================================================================
+#
+# Spawned by the Archipelago Launcher when the user clicks "Age Of Mythology
+# Retold Client".  Connects to the AP server, exchanges items/locations, and
+# bridges those events into the running game by writing XS state files into
+# the player's AoMR user folder.
+#
+# Responsibilities:
+#   * Authenticate to the AP server and load slot_data.
+#   * Install the bundled XS trigger files (archipelago.xs, ap_init.xs,
+#     ap_ai_*.xs) into the AoMR user folder so the game has them available.
+#   * Maintain `user.cfg` so AI echo / trigger echo are enabled (we read
+#     the AoMR log file to detect in-game events).
+#   * Watch the AoMR log file for `APLocationCheck` markers emitted by the
+#     game's XS triggers and forward them as AP location events.
+#   * Receive items from the AP server, hand them to GameClient.py which
+#     writes the per-game `aom_state.xs` (state file consumed by archipelago.xs).
+#   * Surface a Tk-based status window via ApGui.py.
+#
+# Critical files & paths:
+#   * `<user_folder>/trigger/archipelago.xs` and `ap_init.xs` — included from
+#     each scenario.
+#   * `<user_folder>/Game/AI/ap_ai_*.xs` — AI script referenced by every map.
+#   * `<user_folder>/config/user.cfg` — must contain `aiDebug` and
+#     `enableTriggerEcho` for the AP↔game bridge to work.
+#   * `<user_folder>/Logs/<latest>.txt` — AoMR's stdout-equivalent.  We tail
+#     this to detect game events.
+#
+# Slot data flow:
+#   server -> on_package -> _load_slot_data -> self.game_ctx.<field>
+#   The fields are then read by GameClient.py when emitting aom_state.xs.
+#
+# Adding a new server-to-game datum:
+#   1. Emit it from `aomWorld.fill_slot_data` in __init__.py.
+#   2. Read it in `_load_slot_data` here and store on `self.game_ctx`.
+#   3. Reference it in GameClient.py XS emission and consume it in
+#      archipelago.xs at runtime.
+#
+# Adding a new game-to-server event:
+#   1. Make archipelago.xs print a unique token via trChatSend / aiEcho.
+#   2. Add a regex pattern + handler in the log-watcher (search for
+#      'APLocationCheck' / 'APStatus' to find existing patterns).
+#   3. Implement the AP-side handling (typically calling
+#      `await self.send_msgs([...])` to forward the event).
+# =============================================================================
+
 import asyncio
 import json
 import logging
@@ -136,7 +184,9 @@ AOMR_CONFIG_FILE = "aomr_client.json"
 
 
 def _load_user_folder() -> str:
-    """Load saved user folder from dedicated config file."""
+    """Load the saved AoMR user folder path from `aomr_client.json` in the AP
+    user directory.  This is the same folder set in the launcher GUI; we
+    persist it so the player only has to point at it once."""
     try:
         config_path = Utils.user_path(AOMR_CONFIG_FILE)
         if os.path.exists(config_path):
@@ -148,7 +198,8 @@ def _load_user_folder() -> str:
 
 
 def _save_user_folder(folder: str) -> None:
-    """Persist user folder to dedicated config file."""
+    """Persist the AoMR user folder path so the next launch picks it up
+    automatically.  Counterpart to `_load_user_folder`."""
     try:
         config_path = Utils.user_path(AOMR_CONFIG_FILE)
         with open(config_path, "w") as f:
@@ -158,6 +209,8 @@ def _save_user_folder(folder: str) -> None:
 
 
 def _resolve_mods_local_dir(user_folder: str) -> Path:
+    """Build the path to the player's local mods directory under the AoMR user
+    folder.  Used when verifying the AoMR Archipelago mod is installed."""
     return Path(user_folder) / "mods" / "local"
 
 
@@ -399,46 +452,52 @@ class AoMCommandProcessor(ClientCommandProcessor):
     # Civilization item commands — unit/myth unlocks and age unlocks only
     # ---------------------------------------------------------------------------
 
-    @staticmethod
-    def _is_civ_item(item) -> bool:
-        """True only for items whose type carries a `culture` field (age unlocks,
-        unit unlocks, myth unit unlocks). Reinforcements, hero stat boosts, hero
-        special effects, hero action boosts, and villager items are generic and
-        always return False regardless of the unit or hero's in-game civ."""
-        try:
-            from ..items.Items import (
-                UnitUnlockProgression, UnitUnlockUseful, AgeUnlock,
-                MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
-                AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
-                AtlanteanMythUnitUnlock,
-            )
-            civ_types = (
-                UnitUnlockProgression, UnitUnlockUseful, AgeUnlock,
-                MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
-                AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
-                AtlanteanMythUnitUnlock,
-            )
-        except ImportError:
-            return False
-        return isinstance(item.type, civ_types)
-
-    def _cmd_civ_items(self, civ_label: str, civ_filter) -> None:
-        """Generic helper: list received items matching a civ filter."""
-        ctx = self.ctx
-        try:
-            from ..items.Items import aomItemData
-        except Exception:
-            self.output("Could not load item data.")
-            return
-        received_set = set(ctx.game_ctx.received_items)
-        matched = [item.item_name for item in aomItemData
-                   if item.id in received_set and civ_filter(item)]
-        if not matched:
-            self.output(f"No {civ_label} items received yet.")
-            return
-        self.output(f"=== {civ_label} Items Received ({len(matched)}) ===")
-        for name in matched:
-            self.output(f"  {name}")
+    # UNUSED: shadowed by later `_cmd_civ_items` (line ~839) and `_cmd_generic` (line ~868)
+    # which use a different signature (culture: str) and don't call `_is_civ_item`.
+    # The early definitions below were dead because Python class semantics let the
+    # second `def` overwrite the first. Kept (commented) until the maintainer
+    # decides which API to keep.
+    #
+    # @staticmethod
+    # def _is_civ_item(item) -> bool:
+    #     """True only for items whose type carries a `culture` field (age unlocks,
+    #     unit unlocks, myth unit unlocks). Reinforcements, hero stat boosts, hero
+    #     special effects, hero action boosts, and villager items are generic and
+    #     always return False regardless of the unit or hero's in-game civ."""
+    #     try:
+    #         from ..items.Items import (
+    #             UnitUnlockProgression, UnitUnlockUseful, AgeUnlock,
+    #             MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
+    #             AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
+    #             AtlanteanMythUnitUnlock,
+    #         )
+    #         civ_types = (
+    #             UnitUnlockProgression, UnitUnlockUseful, AgeUnlock,
+    #             MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
+    #             AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
+    #             AtlanteanMythUnitUnlock,
+    #         )
+    #     except ImportError:
+    #         return False
+    #     return isinstance(item.type, civ_types)
+    #
+    # def _cmd_civ_items(self, civ_label: str, civ_filter) -> None:
+    #     """Generic helper: list received items matching a civ filter."""
+    #     ctx = self.ctx
+    #     try:
+    #         from ..items.Items import aomItemData
+    #     except Exception:
+    #         self.output("Could not load item data.")
+    #         return
+    #     received_set = set(ctx.game_ctx.received_items)
+    #     matched = [item.item_name for item in aomItemData
+    #                if item.id in received_set and civ_filter(item)]
+    #     if not matched:
+    #         self.output(f"No {civ_label} items received yet.")
+    #         return
+    #     self.output(f"=== {civ_label} Items Received ({len(matched)}) ===")
+    #     for name in matched:
+    #         self.output(f"  {name}")
 
     def _cmd_greek(self) -> None:
         """Show Greek age progress and received civ-specific items.
@@ -572,12 +631,13 @@ class AoMCommandProcessor(ClientCommandProcessor):
             for name in items:
                 self.output(f"  {name}")
 
-    def _cmd_generic(self) -> None:
-        """Show received generic items: resources, passive income, reinforcements,
-        hero stat boosts, hero abilities, villager discounts, starting tech items,
-        gems, and shop info. Reinforcements and hero items are generic regardless
-        of the unit or hero's in-game civilization."""
-        self._cmd_civ_items("Generic", lambda item: not self._is_civ_item(item))
+    # UNUSED: shadowed by later `_cmd_generic` (~line 868). Kept (commented).
+    # def _cmd_generic(self) -> None:
+    #     """Show received generic items: resources, passive income, reinforcements,
+    #     hero stat boosts, hero abilities, villager discounts, starting tech items,
+    #     gems, and shop info. Reinforcements and hero items are generic regardless
+    #     of the unit or hero's in-game civilization."""
+    #     self._cmd_civ_items("Generic", lambda item: not self._is_civ_item(item))
 
     # Aliases for civ commands
     _cmd_egyptian = _cmd_egypt
@@ -852,11 +912,30 @@ class AoMCommandProcessor(ClientCommandProcessor):
                 self.output(line)
 
 class AoMContext(CommonContext):
+    """Per-connection AP client state.
+
+    Inherits from `CommonContext` (the standard AP framework class).  Owns:
+      * `game_ctx`            — `AoMGameContext` from GameClient.py; the half
+                                that talks to the running game.
+      * `_game_loop_task`     — async task running the log-tail loop and
+                                state-file emission loop.
+      * cached slot_data fields (random_major_gods, gem_shop, etc.) used by
+        the GUI status panel and by the AP-side check tracking.
+
+    `items_handling = 0b111` enables full item handling (received items,
+    starting inventory, and items from other players).
+    """
     game = AOMR
     command_processor = AoMCommandProcessor
     items_handling = 0b111
 
     def __init__(self, server_address: Optional[str], password: Optional[str], user_folder: str = ""):
+        """Args:
+            server_address: AP server URI (e.g. 'archipelago.gg:38281').
+            password:       optional server password.
+            user_folder:    AoMR user folder path; if empty we'll prompt the
+                            user with a folder picker on first connect.
+        """
         super().__init__(server_address, password)
         self.game_ctx = AoMGameContext(
             user_folder=user_folder,
@@ -939,8 +1018,9 @@ class AoMContext(CommonContext):
         # Because cache_folder is uniquely scoped to server/seed/slot/world_id,
         # a new world always resolves to an empty (non-existent) directory,
         # so stale checks from previous sessions can never load here.
-        from .GameClient import (load_sent_checks, save_sent_checks, load_shop_state,
+        from .GameClient import (load_sent_checks, load_shop_state,
                                   load_trap_state, load_or_create_session_id)
+        # save_sent_checks removed from import — only called from inside GameClient itself.
         # Resolve which replay-session of this generation we belong to. Must
         # happen before any load_* call: cache_folder depends on session_id.
         load_or_create_session_id(self.game_ctx)
@@ -1207,6 +1287,16 @@ def main(
     password: Optional[str] = None,
     name: Optional[str] = None,
 ) -> None:
+    """Entry point invoked by the Archipelago Launcher (see __init__.py
+    `run_client`).  Sets up logging, prompts the user for the AoMR user
+    folder if not already saved, then launches the async server loop and
+    Tk UI.
+
+    Args:
+        connect:  optional initial AP server URI (skips the connect prompt)
+        password: optional initial server password
+        name:     optional initial slot name
+    """
     Utils.init_logging("Age Of Mythology Retold Client")
 
     # Prompt for folder before starting the async loop

@@ -1,3 +1,51 @@
+# =============================================================================
+# Age of Mythology Retold — Location catalog
+# =============================================================================
+#
+# Every check in the AoMR randomizer is enumerated as a member of
+# `aomLocationData` (or one of the per-shop enums lower in this file).
+#
+# Concepts:
+#   * Location TYPES (`aomLocationType`):
+#       VICTORY    — the visible "you beat the scenario" check (gets a real
+#                    AP item).  Holds Gem when gem_shop is on.
+#       COMPLETION — invisible AP-event check; never has a real address.
+#                    Rules.py places a locked event item on it, gating
+#                    reachability for downstream rules.
+#       OBJECTIVE  — optional bonus checks within a scenario (collectibles,
+#                    side objectives) reported by the running game via
+#                    `APLocationCheck` events.
+#       RELIC      — relicsanity locations, only generated when the
+#                    `relicsanity` YAML option is on.  Each relic placed
+#                    in any P1 temple sends a check.
+#
+#   * Location IDs:
+#       global_location_id(scenario_id, local_id) = BASE_ID + scenario_id*100 + local_id
+#       — `scenario_id` is the packed `campaign*100+chapter` value from
+#         `aomScenarioData`, NOT the APScenarioID.  This collision-proof
+#         packing reserves 100 slots per scenario.
+#       — Adding a new location: pick the next free local_id within the
+#         scenario's 100-slot block.
+#       — `BASE_ID` is the global AP offset (see items/Items.py).
+#
+#   * Shop locations (gem_shop):
+#       Tier-prefixed enums (A_*, B_*, C_*, D_*) plus PROGRESSIVE_INFO_IDS
+#       and ALL_SHOP_ITEM_IDS provide named slots for the shop scenario.
+#       Their IDs are hand-picked outside the per-scenario blocks and live
+#       at the bottom of this file.
+#
+# Adding a new location:
+#   1. Add an `aomLocationData` member with `(global_location_id(...), name,
+#      scenario, type)`.
+#   2. The lookup tables at the bottom of this file (`location_id_to_name`,
+#      `REGION_TO_LOCATIONS`, `location_name_to_id`) auto-populate from
+#      iteration over `aomLocationData`.
+#   3. If the location requires special rules (e.g. only reachable with a
+#      particular item), add an `add_rule` call in `rules/Rules.py`.
+#   4. The running game (archipelago.xs) needs to send the matching
+#      location id via `APLocationCheck` when the in-game trigger fires.
+# =============================================================================
+
 import enum
 
 from .Scenarios import aomScenarioData
@@ -5,6 +53,9 @@ from ..items.Items import BASE_ID
 
 
 class aomLocationType(enum.Flag):
+    """Kind-of-check categorization, used to drive Region wiring (Regions.py
+    skips RELIC locations when relicsanity is off) and forced placements
+    (Rules.py keys on VICTORY for gems and on COMPLETION for event items)."""
     VICTORY    = enum.auto()
     COMPLETION = enum.auto()
     OBJECTIVE  = enum.auto()
@@ -12,12 +63,36 @@ class aomLocationType(enum.Flag):
 
 
 def global_location_id(scenario_id: int, local_location_id: int) -> int:
-    # Apply BASE_ID offset so location IDs are globally unique in the AP namespace.
+    """Compose the globally-unique AP location id for a scenario-local check.
+
+    Args:
+        scenario_id:       `aomScenarioData.id` — campaign*100 + chapter.
+                           NOTE this is NOT the APScenarioID the running game
+                           uses (which is `global_number`).  We use the
+                           packed id here because it is collision-proof
+                           across campaigns even though APScenarioIDs jump
+                           ranges (1-32, 501-512, 601-604).
+        local_location_id: 0..99 unique-per-scenario index.  Convention:
+                           0 = VICTORY, 1 = COMPLETION, 2..N = objectives /
+                           relics in any order.
+
+    The 100-slot per-scenario stride must be honored when adding new
+    locations; collisions silently alias inside the IntEnum and remove the
+    later member from the world.
+    """
     return BASE_ID + scenario_id * 100 + local_location_id
 
 
 class aomLocationData(enum.IntEnum):
+    """Catalog of every check.  See module-level header for the ID scheme.
+
+    Member tuple is `(global_id, display_name, scenario, type)`.  The
+    location's full label exposed to the multiworld is
+    `<scenario_display_name>: <location_name>` (see `global_name` below).
+    """
     def __new__(cls, id: int, *args, **kwargs):
+        """IntEnum constructor — uses the precomputed `global_id` as the
+        member's int value so direct integer comparison works."""
         value = id
         obj = int.__new__(cls, value)
         obj._value_ = value
@@ -30,12 +105,21 @@ class aomLocationData(enum.IntEnum):
         scenario: aomScenarioData,
         type: aomLocationType,
     ) -> None:
+        """Args:
+            id:            global location id (output of `global_location_id`).
+            location_name: short label (e.g. "Victory", "Relic 1").
+            scenario:      parent scenario; required for region wiring.
+            type:          `aomLocationType` flag.
+        """
         self.id = id
         self.location_name = location_name
         self.scenario = scenario
         self.type = type
 
     def global_name(self) -> str:
+        """Globally-unique display string used as the AP `Location` name.
+        Format: "<scenario display name>: <location_name>".  Rules.py
+        looks locations up via this string when applying access rules."""
         return f"{self.scenario.display_name}: {self.location_name}"
 
     # FOTT 1
@@ -1860,54 +1944,102 @@ class aomLocationData(enum.IntEnum):
 
 
 
-location_from_id: dict[int, aomLocationData] = {
-    location.id: location for location in aomLocationData
-}
+# --- Lookup tables built once at import time ---
+# All four maps are built by walking `aomLocationData`.  Adding a new location
+# member auto-registers it everywhere — no extra wiring is needed.
 
+# UNUSED: never read outside this module. Kept (commented) for ad-hoc id→enum lookups.
+# # global location id → enum member
+# location_from_id: dict[int, aomLocationData] = {
+#     location.id: location for location in aomLocationData
+# }
+
+# AP display name → global id (consumed by AP framework via aomWorld)
 location_name_to_id: dict[str, int] = {
     location.global_name(): location.id for location in aomLocationData
 }
 
+# global id → AP display name
 location_id_to_name: dict[int, str] = {
     location.id: location.global_name() for location in aomLocationData
 }
 
+# scenario → all locations belonging to it (insertion-ordered)
 SCENARIO_TO_LOCATIONS: dict[aomScenarioData, list[aomLocationData]] = {
     scenario: [] for scenario in aomScenarioData
 }
 for location in aomLocationData:
     SCENARIO_TO_LOCATIONS[location.scenario].append(location)
 
+# Same payload as SCENARIO_TO_LOCATIONS but only contains scenarios that
+# actually have locations (skip entries with empty lists).  This is what
+# regions/Regions.py iterates so it doesn't try to attach empty location
+# lists to a Region.
 REGION_TO_LOCATIONS: dict[aomScenarioData, list[aomLocationData]] = {}
 for location in aomLocationData:
     REGION_TO_LOCATIONS.setdefault(location.scenario, []).append(location)
 
+# location type → all locations of that type.  Used by Rules.py to bulk-place
+# Gem and Victory items.
 TYPE_TO_LOCATIONS: dict[aomLocationType, list[aomLocationData]] = {}
 for location in aomLocationData:
     TYPE_TO_LOCATIONS.setdefault(location.type, []).append(location)
 
+# scenario → its single VICTORY check.  Used by Rules.py for forced placements
+# (Victory item at scenario 32; Gems at every other Victory when gem_shop is on).
 VICTORY_LOCATIONS: dict[aomScenarioData, aomLocationData] = {
     location.scenario: location
     for location in TYPE_TO_LOCATIONS.get(aomLocationType.VICTORY, [])
 }
 
-COMPLETION_LOCATIONS: dict[aomScenarioData, aomLocationData] = {
-    location.scenario: location
-    for location in TYPE_TO_LOCATIONS.get(aomLocationType.COMPLETION, [])
-}
+# UNUSED: never read outside this module. Kept (commented) — comment claims Rules.py
+# uses it but Rules.py iterates TYPE_TO_LOCATIONS directly.
+# # scenario → its single COMPLETION event.  Used by Rules.py to place locked
+# # event items (used as access flags by downstream rules).
+# COMPLETION_LOCATIONS: dict[aomScenarioData, aomLocationData] = {
+#     location.scenario: location
+#     for location in TYPE_TO_LOCATIONS.get(aomLocationType.COMPLETION, [])
+# }
 
 
 
 # -----------------------------------------------------------------------
-# Shop system (redesigned)
+# Shop system
+# -----------------------------------------------------------------------
+# When the `gem_shop` YAML option is on, the player gains access to a shop
+# scenario (APScenarioID 0) where Gems collected from victories can be
+# spent at obelisks for items and progressive hints.
+#
+# Topology:
+#   * 4 shop tiers (A=Marsh, B=Desert, C=Grass, D=Hades).
+#   * Each tier has N item-obelisks and M hint-obelisks (see SHOP_TIER_CONFIGS).
+#   * All 60 item slots (15 per tier) are AP locations that can hold any
+#     item.  They are addressable as TIER_ITEM_IDS[tier][index].
+#   * 4 hint slots (one per tier) are PROGRESSIVE_INFO locations — locked
+#     by Rules.py to ProgressiveShopInfo items.
+#
+# Slot mapping ↔ XS:
+#   `SHOP_SLOT_ORDER` and `SHOP_SLOT_TO_INDEX` produce a 1-indexed slot
+#   number that must match `APShopSlotFromIndex` in archipelago.xs.  Don't
+#   change the order without updating the XS function.
+#
+# Adding a tier or shop:
+#   * Append a row to SHOP_TIER_CONFIGS.  The tier's obelisks count is
+#     consumed by the obelisk-distribution logic in
+#     `aomWorld._generate_shop_assignments`.
+#   * Reserve more ID space if needed — `SHOP_BASE_ID + 0..59` is items,
+#     `+60..63` is progressive info.  Keep new IDs above 3920100 to avoid
+#     collision risk with future scenario IDs.
 # -----------------------------------------------------------------------
 
-# This will be appended to Locations.py to replace the old shop section
+SHOP_BASE_ID = 3920000  # First shop location id; well above any per-scenario id
+ITEMS_PER_SHOP = 15     # Number of item-bearing locations per tier
 
-SHOP_BASE_ID = 3920000
-ITEMS_PER_SHOP = 15
-
-# Tier configs: (internal_name, display_name, item_obelisks, hint_obelisks)
+# Tier configs: (internal_name, display_name, item_obelisks, hint_obelisks).
+# `item_obelisks` controls how many physical obelisks the editor places at the
+# tier (so 15 items get distributed across N obelisks, min 1 each).
+# `hint_obelisks` is the number of hint slots — slot 1 is always the
+# progressive-info hint; slots 2..N are mission hints chosen at fill time.
 SHOP_TIER_CONFIGS = [
     ("A", "Marsh Shop",  5, 4),
     ("B", "Desert Shop", 4, 3),
@@ -1915,41 +2047,51 @@ SHOP_TIER_CONFIGS = [
     ("D", "Hades Shop",  2, 1),
 ]
 
-# Slot order — matches APShopSlotFromIndex in archipelago.xs (1-indexed)
+# Slot order — matches APShopSlotFromIndex in archipelago.xs (1-indexed).
+# Concatenates all item slots first, then all hint slots.  Editing this list
+# REQUIRES updating the XS dispatch function in lock-step.
 SHOP_SLOT_ORDER: list[str] = (
     [f"{t}_ITEM_{i}" for t, _, obs, _ in SHOP_TIER_CONFIGS for i in range(1, obs+1)] +
     [f"{t}_HINT_{i}" for t, _, _, hobs in SHOP_TIER_CONFIGS for i in range(1, hobs+1)]
 )
-SHOP_SLOT_TO_INDEX: dict[str, int] = {s: i+1 for i, s in enumerate(SHOP_SLOT_ORDER)}
+# UNUSED: comment claims GameClient.py uses it but no caller exists. Kept (commented).
+# # Reverse map: slot string ("A_ITEM_3") → 1-based index.  Consumed by GameClient.py
+# # when emitting per-slot assignments to aom_state.xs.
+# SHOP_SLOT_TO_INDEX: dict[str, int] = {s: i+1 for i, s in enumerate(SHOP_SLOT_ORDER)}
 
-# Progressive Shop Info location IDs — one per shop tier, after the 60 item locations
+# Progressive Shop Info location IDs — one per shop tier, after the 60 item locations.
+# Marsh→3920061, Desert→3920062, Grass→3920063, Hades→3920064
 PROGRESSIVE_INFO_IDS: dict[str, int] = {
     tier: SHOP_BASE_ID + 60 + i + 1
     for i, (tier, *_) in enumerate(SHOP_TIER_CONFIGS)
-}  # Marsh→3920061, Desert→3920062, Grass→3920063, Hades→3920064
+}
 
-# Item location IDs per tier: each tier gets ITEMS_PER_SHOP locations
+# Item location IDs per tier: each tier gets ITEMS_PER_SHOP (15) locations.
+# Layout: A=3920001-3920015, B=3920016-3920030, C=3920031-3920045, D=3920046-3920060.
 TIER_ITEM_IDS: dict[str, list[int]] = {}
 _ptr = SHOP_BASE_ID
 for _tier, *_ in SHOP_TIER_CONFIGS:
     TIER_ITEM_IDS[_tier] = list(range(_ptr + 1, _ptr + ITEMS_PER_SHOP + 1))
     _ptr += ITEMS_PER_SHOP
 
-# All shop item location IDs (flat list, 60 total)
+# All shop item location IDs (flat list, 60 total).  Region wiring iterates this.
 ALL_SHOP_ITEM_IDS: list[int] = [loc_id for ids in TIER_ITEM_IDS.values() for loc_id in ids]
 
-# All progressive info location IDs (4 total)
+# All progressive info location IDs (4 total).  Rules.py iterates these to
+# install the place_progressive_shop_info forced placements.
 ALL_PROGRESSIVE_INFO_IDS: list[int] = list(PROGRESSIVE_INFO_IDS.values())
 
-# Register all shop locations in the global lookup tables
-# Item locations
+# Register shop locations in the global lookup tables so AP can look them up
+# by display name (just like scenario locations).  Shop locations are NOT
+# in `aomLocationData` — they're computed dynamically only when gem_shop is on.
+# Item slot display name format: "<tier display>: Item <i>"
 for _tier, _display, *_ in SHOP_TIER_CONFIGS:
     for _i, _loc_id in enumerate(TIER_ITEM_IDS[_tier], start=1):
         _name = f"{_display}: Item {_i}"
         location_name_to_id[_name] = _loc_id
         location_id_to_name[_loc_id] = _name
 
-# Progressive Info locations
+# Progressive info display name format: "<tier display>: Progressive Shop Info"
 for _tier, _display, *_ in SHOP_TIER_CONFIGS:
     _loc_id = PROGRESSIVE_INFO_IDS[_tier]
     _name   = f"{_display}: Progressive Shop Info"

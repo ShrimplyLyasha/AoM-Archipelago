@@ -1,3 +1,80 @@
+# =============================================================================
+# Age of Mythology Retold — Item catalog
+# =============================================================================
+#
+# The full set of items the AoMR randomizer can place into a multiworld.  Every
+# item is declared as a member of the `aomItemData` IntEnum at the bottom of
+# this file.  Each member carries:
+#
+#   * a numeric `id` (the AP item code, plus `BASE_ID` when serialized)
+#   * a display `item_name`
+#   * a `type` payload — one of the @dataclass classes defined above
+#
+# The `type`'s class is what `item_type_to_classification` keys on to decide
+# `progression` / `useful` / `filler` / `trap`.
+#
+# Lifecycle:
+#   * `aomWorld.create_items()` (in __init__.py) iterates `aomItemData`, applies
+#     option-driven filters (campaign / civ / hero ability), and builds the
+#     itempool.
+#   * Locked-placement items (Victory, Gem, ProgressiveShopInfo) are placed by
+#     `rules/Rules.py` instead of bucketed into the random pool.
+#   * On the game side, each item id eventually maps to an XS handler in
+#     `triggers/archipelago.xs` (see `APApplyItems` and the helper functions
+#     it dispatches to).  GameClient.py emits the per-slot state that those
+#     handlers consume.
+#
+# -----------------------------------------------------------------------------
+# CULTURE / CIV TAGGING
+# -----------------------------------------------------------------------------
+# Civ-specific items must carry a `culture` field on their payload dataclass
+# (or a recognizable substring in `unit_name`) so `aomWorld.create_items()`'s
+# civ-exclusion logic can drop the item when the player's YAML excludes that
+# civilization.  Generic items (resources, traps, hero items shared across
+# civs) never need this tag.
+#
+# -----------------------------------------------------------------------------
+# ID RANGES — keep new items inside an unused band to avoid silent IntEnum
+# collisions.  Existing bands:
+#     1-99      Starting Resources / Passive Income                (filler)
+#     1002-1011 Progressive Age Unlocks                             (progression)
+#     2000-3199 Hero stat / action / special ability boosts        (mostly useful)
+#     3200-3299 Unit unlocks (Can Train Hoplite etc.)              (progression/useful)
+#     3300-3499 Kastor specials/stats                               (mixed)
+#     3500-3504 Campaign / section unlocks                          (progression)
+#     3510      Atlantis Key                                        (progression)
+#     4000-4099 Reinforcements                                      (filler/useful)
+#     5000-5009 Villager carry / cost                               (filler)
+#     5015-5027 Hero "Joins" + myth unit unlocks                    (useful/progression)
+#     5100-5103 Starting tech grants                                (useful/filler)
+#     9950-9995 Traps                                               (trap)
+#     9997-9999 Special: ProgressiveShopInfo, Gem, Victory          (locked placements)
+#
+# When adding a new item, pick the next free id within the matching band — and
+# remember `aomItemData` is an IntEnum, so two members with the same numeric
+# value silently alias and the second one disappears.  See the KASTOR comment
+# block for the exact bug we hit by reusing 3200-3209.
+#
+# -----------------------------------------------------------------------------
+# EXTENDING
+# -----------------------------------------------------------------------------
+#   * New civ-specific unit unlock: add a `UnitUnlockUseful(unit_name, culture)`
+#     entry, then ensure XS code unforbids the unit when the item is received
+#     (see APApplyItems' unit-unlock dispatch in archipelago.xs).
+#   * New hero: define stat / special / action items with `hero=` set to the
+#     scenario-editor proto unit name; XS already dispatches generically off
+#     the hero name.
+#   * New trap: add a Trap dataclass entry with the next `trap_type` int and
+#     mirror the constant in ap_ai_runtime.xs (`cAPTrap*`).
+#   * New campaign: add a `Campaign(campaign=...)` entry whose `vanilla_campaign`
+#     points at the new `aomCampaignData` enum member.  Section-unlock semantics
+#     (precollect when starting / progression otherwise) are inherited.
+#   * New age-tier myth unlock: extend `MythUnitUnlockProgression`/`Useful`/`Filler`
+#     with the new culture's unit list.  Match `culture` to civ string used
+#     elsewhere ("Greek"/"Egyptian"/"Norse"/"Atlantean") so create_items filters
+#     consistently.
+# =============================================================================
+
 from dataclasses import dataclass
 import enum
 
@@ -9,90 +86,134 @@ from ..locations.Campaigns import aomCampaignData
 # Tuning constants
 # -----------------------------------------------------------------------
 
-BASE_ID = 0x3B0000  # 3866624 — AP location/item ID offset
-BASE_RESOURCE = 30
-REINFORCEMENT_AMOUNT = 2
+BASE_ID = 0x3B0000  # 3866624 — AP location/item ID offset (added by Archipelago when serializing)
+BASE_RESOURCE = 30  # Base unit count for the small starting-resource items (Large = 4x)
+REINFORCEMENT_AMOUNT = 2  # Default count of units that reinforcement items spawn at the spawn marker
 
 
 # -----------------------------------------------------------------------
 # Item type dataclasses
 # -----------------------------------------------------------------------
+# Each dataclass corresponds to a *kind* of item.  The class itself is the
+# routing key in `item_type_to_classification` (below) which tells AP whether
+# the item is progression / useful / filler / trap.  The instance carries
+# whatever runtime parameters the XS handler will need (resource type, unit
+# name, hero name, etc.).
+#
+# Most dataclass names map directly to a branch in `archipelago.xs`'s item
+# dispatcher.  When adding a new dataclass, also:
+#   * add a row to `item_type_to_classification`
+#   * extend `ItemType` Union if it should be referenced via the alias
+#   * implement an XS handler in archipelago.xs's APApplyItems / friends
+# -----------------------------------------------------------------------
 
 @dataclass
 class Victory:
+    """Singleton victory item — placed by Rules.py at FOTT_32's victory location.
+    Receiving it triggers AP victory; not in the random pool."""
     pass
 
 
 @dataclass
 class Campaign:
+    """Campaign-section unlock.  `vanilla_campaign` points at the enum member
+    in `aomCampaignData`, which `aomWorld.generate_early()` uses to decide
+    which Campaign item to precollect (the player's starting campaign)."""
     vanilla_campaign: aomCampaignData
 
 
 @dataclass
 class AgeUnlock:
-    culture: str  # "Greek", "Egyptian", or "Norse"
+    """Progressive age unlock — Classical / Heroic / Mythic, in order, by stack
+    count.  `culture` controls which civilization is unlocked
+    ("Greek" / "Egyptian" / "Norse" / "Atlantean")."""
+    culture: str
 
 
 @dataclass
 class FinalUnlock:
+    """Atlantis Key — gates the Final section in atlantis_key mode (FinalScenarios
+    option).  Placed in the random pool; in beat_x mode it is omitted entirely."""
     pass
 
 
 @dataclass
 class Gem:
-    """Currency earned by beating scenarios, spent in the shop."""
+    """Currency earned by beating scenarios, spent in the gem shop.  Locked to
+    Victory locations by Rules.place_gems() when `gem_shop` option is on."""
     pass
 
 
 @dataclass
 class ProgressiveShopInfo:
-    """Unlocks additional label detail in the Gem Shop. One per shop tier."""
+    """Unlocks additional label detail in the Gem Shop. One per shop tier.
+    Locked by Rules.place_progressive_shop_info() to specific hint slots."""
     pass
 
 @dataclass
 class Trap:
-    """A trap sent to the AoM player that activates mid-scenario."""
-    trap_type: int  # matches cAPTrap* constants in ap_ai_runtime.xs
+    """A trap sent to the AoMR player that activates mid-scenario.  `trap_type`
+    must match a `cAPTrap*` const in `ap_ai_runtime.xs` so the running game
+    knows which god-power-style negative effect to fire."""
+    trap_type: int
 
 
 
 @dataclass
 class StartingResources:
+    """Filler-tier resource grant applied at scenario start.  `type` is a
+    `Resource` enum; `amount` is the integer to add to the player's starting
+    bank.  Handled by APApplyItems' resource accumulator."""
     type: "Resource"
     amount: int
 
 
 @dataclass
 class StartingResourcesLarge:
+    """Same as StartingResources but with a 4x amount.  Splitting into two
+    classes lets us tune classification (filler/useful) per tier."""
     type: "Resource"
     amount: int
 
 
 @dataclass
 class PassiveIncome:
+    """Per-minute resource trickle (per-20s for FAVOR).  Stacks with multiple
+    copies — XS sums the per-minute totals into a single ticker rule."""
     resource: "Resource"
     amount_per_minute: int
 
 
 @dataclass
 class PassiveIncomeLarge:
+    """4x variant of PassiveIncome — see comment on PassiveIncome."""
     resource: "Resource"
     amount_per_minute: int
 
 
 @dataclass
 class RelicTrickle:
+    """Per-owned-relic resource trickle.  XS multiplies `amount_per_relic` by
+    the player's current relic count to produce the effective passive income.
+    Stackable: multiple copies sum amounts."""
     resource: "Resource"
     amount_per_relic: float
 
 
 @dataclass
 class RelicEffect:
+    """Per-owned-relic stat / cost / build-speed multiplier applied to all
+    P1 protounits.  `effect_id` is the dispatch key consumed by
+    APRelicEnforce in archipelago.xs (see RELIC_EFFECT_* item entries below
+    for the supported keys)."""
     effect_id: str
 
 
 @dataclass
 class Reinforcement:
+    """Spawn `amount` copies of a proto unit at the scenario's spawn marker.
+    `unit_name` must match an in-game proto unit name (e.g. "Hoplite",
+    "Berserk").  Filler-tier; ReinforcementUseful is the useful-tier variant."""
     unit_name: str
     amount: int
 
@@ -100,37 +221,48 @@ class Reinforcement:
 # Useful variant of Reinforcement — classified as useful instead of filler.
 # Must be defined before the classification dict.
 class ReinforcementUseful(Reinforcement):
+    """Useful-tier reinforcement — same payload as Reinforcement; the class
+    identity is the only difference, which routes it to the useful slot in
+    `item_type_to_classification`."""
     pass
 
 
 @dataclass
 class UnitStatBonus:
+    """Adjust a single stat on a single proto unit.  Useful-tier."""
     unit_name: str
-    stat: str
+    stat: str  # see MythTRConstants.txt for valid stat names
     amount: int
 
 
 @dataclass
 class UnitUnlockProgression:
+    """Progression-tier unit unlock — one per civ.  Required for chunk of
+    scenarios to be solvable, so it counts towards reachability."""
     unit_name: str
     culture: str
 
 
 @dataclass
 class UnitUnlockUseful:
+    """Useful-tier unit unlock — civ-tagged via `culture` so create_items can
+    drop it when the civ is excluded."""
     unit_name: str
     culture: str
 
 
 @dataclass
 class MythUnitUnlockProgression:
-    units: list  # proto unit names forbidden until received
+    """Progression-tier myth unit unlock for one age tier of one civ.
+    `units` lists every proto unit forbidden until this item is received."""
+    units: list
     culture: str
-    age: str
+    age: str  # "Classical" / "Heroic" / "Mythic"
 
 
 @dataclass
 class MythUnitUnlockUseful:
+    """Useful-tier variant of MythUnitUnlockProgression — same payload."""
     units: list
     culture: str
     age: str
@@ -138,6 +270,7 @@ class MythUnitUnlockUseful:
 
 @dataclass
 class MythUnitUnlockFiller:
+    """Filler-tier variant of MythUnitUnlockProgression — same payload."""
     units: list
     culture: str
     age: str
@@ -167,47 +300,86 @@ class AtlanteanMythUnitUnlock:
 
 @dataclass
 class HeroStatBoost:
-    hero: str          # proto unit name e.g. "Arkantos", "AjaxSPC"
-    stat: str          # e.g. "Hitpoints", "HandAttack", "RechargeTime", "UnitRegenRate"
-    amount: float      # positive = add, negative = subtract
-    attack_type: str = ""  # action name used for attack boosts e.g. "HandAttack", "RangedAttack"
+    """Useful-tier additive stat boost on a hero.  HeroStatBoostFiller is the
+    same shape with filler classification.
+
+    Args:
+        hero:        proto unit name (e.g. "Arkantos", "AjaxSPC")
+        stat:        stat name (e.g. "Hitpoints", "HandAttack",
+                     "RechargeTime", "UnitRegenRate")
+        amount:      delta — positive adds, negative subtracts
+        attack_type: action name when boosting attack damage
+                     (e.g. "HandAttack", "RangedAttack")
+    """
+    hero: str
+    stat: str
+    amount: float
+    attack_type: str = ""
 
 
 # Filler variant of HeroStatBoost — small incremental boosts.
 # Must be defined before the classification dict.
 class HeroStatBoostFiller(HeroStatBoost):
+    """Filler-tier variant of HeroStatBoost.  Identical fields — class identity
+    is what `item_type_to_classification` keys on."""
     pass
 
 
 @dataclass
 class HeroSpecialEffect:
+    """Bind a special on-hit / on-cast effect to a hero ability.  XS reads
+    `description` as a space-separated mini-DSL — see archipelago.xs's
+    APApplySpecialEffects for the parser.  Removed from pool when the
+    `hero_abilities` YAML option is off."""
     hero: str
-    description: str   # internal description of the effect (see comments at each item)
+    description: str
 
 
 @dataclass
 class HeroActionBoost:
-    hero: str          # proto unit name e.g. "Arkantos"
-    action: str        # action name e.g. "HandAttack", "Gore", "ChargedRangedAttack"
-    effect: int        # cXSActionEffect* constant (see MythTRConstants.txt)
-    amount: float      # value to apply
+    """Tweak a single XSActionEffect parameter on a hero ability.
+
+    Args:
+        hero:   proto unit name (e.g. "Arkantos")
+        action: action name (e.g. "HandAttack", "Gore", "ChargedRangedAttack")
+        effect: `cXSActionEffect*` constant — see MythTRConstants.txt for the
+                full list.  Determines what the value tunes (damage, AOE, etc.).
+        amount: value the engine applies to the effect.
+    """
+    hero: str
+    action: str
+    effect: int
+    amount: float
 
 
 @dataclass
 class ArkantosHousing:
-    pass               # gives Arkantos -10 pop count, providing 10 free population capacity
+    """Negative pop count on a hero so they provide free population capacity.
+    Reused for both Arkantos (-10 pop = +10 capacity) and Kastor-as-a-Manor
+    (-20 pop = +20 capacity)."""
+    pass
 
 
 @dataclass
 class GenericVillagerDiscount:
-    """Reduces food cost for all villager types (Greek, Egyptian, Norse, Atlantean)."""
-    reduction: int  # food cost reduction applied to each villager type
+    """Reduces food cost for all villager types (Greek, Egyptian, Norse,
+    Atlantean) by `reduction`.  Generic — never civ-filtered."""
+    reduction: int
 
 @dataclass
 class VillagerCarryCapacity:
-    unit_name: str    # proto unit name e.g. "VillagerGreek"
-    resource: str     # "food", "wood", or "gold"
-    amount: int       # carry capacity increase
+    """Civ-specific villager carry boost.  Civ encoded via `unit_name`
+    (e.g. "VillagerGreek") so create_items's substring check filters it
+    against `excluded_civs` correctly.
+
+    Args:
+        unit_name: proto unit name (e.g. "VillagerGreek")
+        resource:  "food" / "wood" / "gold" — note string, not Resource enum
+        amount:    carry capacity increase
+    """
+    unit_name: str
+    resource: str
+    amount: int
 
 
 @dataclass
@@ -309,18 +481,35 @@ item_type_to_classification: dict[type, ItemClassification] = {
 # -----------------------------------------------------------------------
 
 def _res(multiplier: float, favor: bool = False) -> int:
+    """Compute the integer amount for a starting-resource item.
+
+    Args:
+        multiplier: scale factor applied to BASE_RESOURCE.  Convention is
+                    1.0 for the SMALL filler tier and 4.0 for the LARGE
+                    useful tier.
+        favor:      Favor's per-item amount is halved relative to the other
+                    resources to keep its in-game weight balanced.
+    """
     amount = int(BASE_RESOURCE * multiplier)
     if favor:
         amount = amount // 2
     return amount
 
 
-def _passive(multiplier: float, favor: bool = False) -> int:
-    base = BASE_RESOURCE // 5
-    amount = int(base * multiplier)
-    if favor:
-        amount = amount // 2
-    return amount
+# UNUSED: passive-income amounts are hard-coded; helper kept (commented) for symmetry with _res.
+# def _passive(multiplier: float, favor: bool = False) -> int:
+#     """Compute the per-minute trickle amount for a passive-income item.
+#
+#     Identical pattern to `_res` but anchored at `BASE_RESOURCE // 5` so the
+#     trickle scale is independent of the upfront grant scale.  Currently
+#     unused at runtime — per-minute amounts on PassiveIncome items are
+#     hard-coded for clarity but the helper is retained for symmetry.
+#     """
+#     base = BASE_RESOURCE // 5
+#     amount = int(base * multiplier)
+#     if favor:
+#         amount = amount // 2
+#     return amount
 
 
 # -----------------------------------------------------------------------
@@ -328,13 +517,32 @@ def _passive(multiplier: float, favor: bool = False) -> int:
 # -----------------------------------------------------------------------
 
 class aomItemData(enum.IntEnum):
+    """The complete catalog of items the AoMR randomizer can place into the
+    item pool.  Each member is an IntEnum value (the AP item id) with three
+    extra attributes assigned in `__init__`:
+
+      * `id`         — same as the enum value; AP item code (no BASE_ID offset)
+      * `item_name`  — display name used by the multiworld
+      * `type`       — the dataclass instance carrying runtime parameters
+      * `type_data`  — `type(self.type)`; routing key for classification
+
+    IntEnum collision warning: two members with the same numeric id silently
+    alias and the second member becomes inaccessible.  See the KASTOR comment
+    block below — we hit this bug by reusing the 3200-3209 range that
+    CAN_TRAIN_HOPLITE/SPEARMAN/BERSERK already occupied.
+    """
     def __new__(cls, id: int, name: str, type: ItemType) -> "aomItemData":
+        """IntEnum constructor — sets the numeric value used for lookup and
+        deduplication."""
         value = id
         obj = int.__new__(cls, value)
         obj._value_ = value
         return obj
 
     def __init__(self, id: int, name: str, type: ItemType) -> None:
+        """Attach extra metadata fields to the enum member after IntEnum's
+        own __init__ is done.  `type_data` lets `aomWorld.create_items()`
+        look up classification with a single dict access."""
         self.id = id
         self.item_name = name
         self.type = type
@@ -540,6 +748,7 @@ class aomItemData(enum.IntEnum):
     REGINLEIF_JOINS               = 4028, "Reginleif Joins the Campaign",              ReinforcementUseful("Reginleif", 1)
     ODYSSEUS_JOINS                = 5015, "Odysseus Joins the Campaign",               ReinforcementUseful("OdysseusSPC", 1)
     KASTOR_JOINS                  = 4035, "Kastor Joins the Campaign",                 ReinforcementUseful("Kastor", 1)
+    AJAX_AMANRA_DREAMS            = 4036, "Ajax and Amanra join you for A Place in My Dreams", ReinforcementUseful("AjaxSPC", 1)
 
     # Myth unit tier unlocks — forbidden at start, unlocked by item
     GREEK_CLASSICAL_MYTH_UNITS               = 5016, "Can train Greek Classical Myth Units", MythUnitUnlockProgression(['Centaur', 'Minotaur', 'Cyclops', 'Lykaon'], "Greek", "Classical")
@@ -792,13 +1001,18 @@ class aomItemData(enum.IntEnum):
 # -----------------------------------------------------------------------
 # Lookup tables
 # -----------------------------------------------------------------------
+# Built once at import time from `aomItemData`.  Anything outside this
+# module (the world class, Rules.py, the AP framework) consumes one of
+# these maps rather than scanning the enum.  Adding a new aomItemData
+# member auto-registers in all of these — no additional plumbing needed.
 
-NAME_TO_ITEM: dict[str, aomItemData] = {}
-ID_TO_ITEM: dict[int, aomItemData] = {}
-CATEGORY_TO_ITEMS: dict[type, list[aomItemData]] = {}
-filler_items: list[aomItemData] = []
-item_id_to_name: dict[int, str] = {}
-item_name_to_id: dict[str, int] = {}
+NAME_TO_ITEM: dict[str, aomItemData] = {}                # display name → enum member
+ID_TO_ITEM: dict[int, aomItemData] = {}                  # AP item id  → enum member
+# UNUSED: never read outside this module. Kept (commented) for future grouping queries.
+# CATEGORY_TO_ITEMS: dict[type, list[aomItemData]] = {}    # dataclass type → all items of that kind
+filler_items: list[aomItemData] = []                     # pre-filtered list of filler-classified items
+item_id_to_name: dict[int, str] = {}                     # AP item id → display name (mirror used by AP framework)
+item_name_to_id: dict[str, int] = {}                     # display name → AP item id (mirror used by AP framework)
 
 for item in aomItemData:
     assert item.item_name not in item_name_to_id, f"Duplicate item name: {item.item_name}"
@@ -812,4 +1026,4 @@ for item in aomItemData:
 
     item_id_to_name[item.id] = item.item_name
     item_name_to_id[item.item_name] = item.id
-    CATEGORY_TO_ITEMS.setdefault(item.type_data, []).append(item)
+    # CATEGORY_TO_ITEMS.setdefault(item.type_data, []).append(item)  # disabled with CATEGORY_TO_ITEMS above

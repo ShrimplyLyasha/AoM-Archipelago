@@ -1,3 +1,23 @@
+# =============================================================================
+# Age of Mythology Retold — Kivy GUI overlay (kvui)
+# =============================================================================
+#
+# Augments Archipelago's standard `GameManager` window (kvui) with a 5-row
+# status panel that pins to the top-right of the client view:
+#   row 1: Atlantis Key / Final-section status
+#   row 2: gem balance
+#   row 3: shops open count
+#   row 4: traps queued
+#   row 5: next-trap name
+#
+# All updates flow through `update_atlantis_status`, `update_shop_status`,
+# `update_trap_status`.  Callers (ApClient.py + GameClient.py) marshal onto
+# the Kivy main thread via `Clock.schedule_once`.
+#
+# This file is purely cosmetic — disabling it does not break gameplay; the
+# CLI client mode would still function.
+# =============================================================================
+
 import asyncio
 import logging
 from pathlib import Path
@@ -16,10 +36,16 @@ if TYPE_CHECKING:
 
 
 class AoMManager(GameManager):
+    """Custom Archipelago GameManager subclass — adds the AoMR status panel
+    to the standard kvui chrome.  Instantiated by `start_ap_ui` (called from
+    ApClient.py once the AoMContext is ready)."""
     base_title = "Archipelago Age of Mythology: Retold Client"
     icon = str(Path(__file__).parent.parent / "aom_icon.ico")
 
     def build(self):
+        """Kivy entry — construct the widget tree.  Wraps the base kvui
+        layout in a FloatLayout so we can pin a status `BoxLayout` to the
+        top-right above the chat tabs.  Returns the root widget."""
         main_content = super().build()
 
         root = FloatLayout()
@@ -88,6 +114,18 @@ class AoMManager(GameManager):
         return root
 
     def update_atlantis_status(self, text: str, green: bool = False) -> None:
+        """Update the row-1 status label.
+
+        Args:
+            text:  The status string (or "" to hide).
+            green: If True, render in bright green (unlocked / open state).
+                    Otherwise gold (in-progress / neutral).
+
+        Marshals onto the Kivy main thread via Clock.schedule_once so async
+        AP code can call this safely.
+
+        Caller: `_update_atlantis_ui` in ApClient.py.
+        """
         def _update(dt):
             if not text:
                 self._atlantis_label.text = ""
@@ -97,6 +135,13 @@ class AoMManager(GameManager):
         Clock.schedule_once(_update)
 
     def update_shop_status(self, gems, shops_open) -> None:
+        """Update gems / shops-open rows.
+
+        Args:
+            gems:       Current gem balance, or None to hide both rows
+                        (used when gem_shop is disabled).
+            shops_open: Number of shop tiers currently unlocked (1-4).
+        """
         def _update(dt):
             if gems is None:
                 self._gems_label.text  = ""
@@ -107,6 +152,15 @@ class AoMManager(GameManager):
         Clock.schedule_once(_update)
 
     def update_trap_status(self, queue_size: int, next_trap_name: str) -> None:
+        """Update trap-queue display.  Hides both rows when queue is empty.
+
+        Args:
+            queue_size:    Number of pending traps in `ctx.trap_queue`.
+            next_trap_name: Display name of the next trap to fire.
+
+        Caller: `_update_atlantis_ui` plus the trap-queue update path in
+        `_resolve_shop_signal` / `read_new_checks`.
+        """
         def _update(dt):
             if queue_size <= 0:
                 self._trap_count_label.text = ""
@@ -126,5 +180,11 @@ class AoMManager(GameManager):
 
     @staticmethod
     def start_ap_ui(ctx: "AoMContext") -> None:
+        """Bootstrap the Kivy UI alongside the running asyncio loop.
+        Stores both the manager and its task on `ctx` so the client can
+        cancel them on shutdown.
+
+        Caller: `main()` in ApClient.py.
+        """
         ctx.ui = AoMManager(ctx)
         ctx.ui_task = asyncio.create_task(ctx.ui.async_run(), name="UI")

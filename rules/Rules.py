@@ -1,10 +1,63 @@
+# =============================================================================
+# Age of Mythology Retold — Reachability rules and forced placements
+# =============================================================================
+#
+# `set_rules(world)` is the entry point Archipelago calls after `create_regions`
+# and `create_items`.  It does three big things:
+#
+#   1. Mark every COMPLETION location with a locked event item (so downstream
+#      rules can check completion via `state.has(...)`) and lock the singular
+#      Victory item to FOTT_32's Victory location.
+#   2. Install access rules (`set_rule` / `add_rule`) on Region entrances so
+#      reachability honors:
+#         * section unlocks (Greek/Egyptian/Norse/etc. campaign items)
+#         * per-scenario age & military requirements
+#         * point-totals (so the player can't enter scenarios with no useful
+#           items in their inventory)
+#   3. Install forced item placements for the gem shop:
+#         * Gems on every non-32 Victory
+#         * Progressive Shop Info on each tier's hint slot 1
+#         * Tier-locked entrances for B/C/D shops
+#
+# Three big tables drive scenario rules:
+#
+#   _SCENARIO_DATA[n]      — (start_age, min_unlocks, points, exempt, myth_only)
+#                            One entry per scenario (global_number 1-32, NA
+#                            501-512, GG 601-604).  Adding a scenario REQUIRES
+#                            adding a row here.
+#   _VANILLA_CIV[n]        — civ string used as a fallback when god randomization
+#                            is off (or as a hint when picking units).
+#   _VANILLA_GODS[n]       — vanilla god id; mirrors __init__.py::_VANILLA_GODS.
+#
+# -----------------------------------------------------------------------------
+# EXTENDING
+# -----------------------------------------------------------------------------
+#   * New scenario:  add to `_SCENARIO_DATA`, `_VANILLA_CIV`, `_VANILLA_GODS`.
+#                    Add to `_SCENARIO_AGE_CAP` if it has a hard age cap; or
+#                    `_SCENARIO_HEROIC_FLOOR` if Heroic-floor + Mythic-max.
+#                    Add a section_for() branch in
+#                    `set_scenario_age_and_point_rules` if it falls in a new
+#                    APScenarioID range.
+#   * New civ:       add unlock-name list to `_CIV_UNLOCK_NAMES`, units per
+#                    age tier to `_HUMAN_UNITS`, and myth unit items to
+#                    `_MYTH_ITEMS_BY_UNLOCK`.  Also add the civ god ids to
+#                    `_GREEK_GOD_IDS`/`_EGYPTIAN_GOD_IDS`/etc and to `_GOD_TO_CIV`.
+#   * New campaign:  add a `_maybe_set` line for its menu→region entrance in
+#                    `set_section_rules`, with the appropriate Campaign item
+#                    or unconditional access.
+#   * New item type that should count toward the points gate: extend
+#                    `_BASE_POINTS` with the new dataclass type.
+#   * New age-cap behavior: write a `_make_*_scenario_rule` factory and
+#                    dispatch to it from `set_scenario_age_and_point_rules`.
+# =============================================================================
+
 from __future__ import annotations
 
 from BaseClasses import CollectionState, Item, ItemClassification, LocationProgressType
 from worlds.generic.Rules import add_rule, forbid_item, set_rule
 
 from ..items.Items import (
-    ProgressiveShopInfo,
+    # ProgressiveShopInfo,                # UNUSED in Rules.py
     aomItemData,
     AgeUnlock,
     MythUnitUnlockFiller,
@@ -25,7 +78,7 @@ from ..items.Items import (
     StartingResourcesLarge,
     UnitUnlockProgression,
     UnitUnlockUseful,
-    item_type_to_classification,
+    # item_type_to_classification,        # UNUSED in Rules.py
 )
 from ..locations.Locations import (
     aomLocationData,
@@ -44,7 +97,7 @@ from ..Options import FinalScenarios
 # Atlantean types — only available when godsanity Items.py is packaged
 try:
     from ..items.Items import (
-    ProgressiveShopInfo,
+        # ProgressiveShopInfo,            # UNUSED in Rules.py (also stray-indented)
         AtlanteanMythUnitUnlock,
         AtlanteanUnitUnlockProgression,
         AtlanteanUnitUnlockUseful,
@@ -59,14 +112,22 @@ except (ImportError, AttributeError):
 # --------------------------------------------------
 
 def completion_event_name(scenario: aomScenarioData) -> str:
+    """Name of the locked event item placed on a scenario's COMPLETION
+    location.  Used as the key for `state.has(...)` checks elsewhere in
+    rules — e.g. `count_completed_scenarios`, beat_x final-mode rule."""
     return f"{scenario.region_name} Complete"
 
 
 def completion_location_name(scenario: aomScenarioData) -> str:
+    """Display name of a scenario's COMPLETION location, matching the format
+    `aomLocationData.global_name()` produces.  Used to look up the location
+    via `multiworld.get_location` for placing the event item."""
     return f"{scenario.display_name}: Completion"
 
 
 def entrance_name(source: str, target: str) -> str:
+    """Format an entrance name to match `regions/Regions.py::connect_regions`.
+    Both halves of the codebase MUST agree on this exact format."""
     return f"{source} -> {target}"
 
 
@@ -75,10 +136,16 @@ def entrance_name(source: str, target: str) -> str:
 # --------------------------------------------------
 
 def has_scenario_complete(state: CollectionState, player: int, scenario: aomScenarioData) -> bool:
+    """True if the player has the locked completion event item for `scenario`.
+    Used by section rules (beat_x mode) and by gem shop tier gates."""
     return state.has(completion_event_name(scenario), player)
 
 
 def count_completed_scenarios(state: CollectionState, player: int) -> int:
+    """Total number of non-Final scenarios the player has completed.  Used by
+    the FinalScenarios=beat_x_scenarios mode and by shop tier unlock gates.
+    The Final section is excluded so completing FOTT_31/32 doesn't help
+    unlock the Final section in beat_x mode."""
     non_final = [s for s in aomScenarioData if s.campaign.name != "FOTT_FINAL"]
     return sum(1 for s in non_final if has_scenario_complete(state, player, s))
 
@@ -88,10 +155,12 @@ def count_completed_scenarios(state: CollectionState, player: int) -> int:
 # --------------------------------------------------
 
 def get_final_mode_value(world) -> int:
+    """Return the FinalScenarios option as an int (matches `Options.FinalScenarios.option_*` consts)."""
     return int(world.options.final_scenarios.value)
 
 
 def get_x_scenarios_value(world) -> int:
+    """Return the X-scenarios threshold for FinalScenarios=beat_x_scenarios mode."""
     return int(world.options.x_scenarios.value)
 
 
@@ -110,6 +179,9 @@ except AttributeError:
 
 
 def count_civ_unlocks(state: CollectionState, player: int, unlock_names: list[str]) -> int:
+    """Total number of progressive age unlock items the player has across the
+    given civ's unlock-name list.  Used by per-scenario hard-floor checks
+    (e.g. scenario 32 needs 3 unlocks for the Wonder)."""
     return sum(state.count(name, player) for name in unlock_names)
 
 
@@ -137,11 +209,15 @@ _CIV_UNLOCK_NAMES: dict[str, list[str]] = {
     "Atlantean": ATLANTEAN_UNLOCK_NAMES,
 }
 
-def _unlock_names_for_god(god_id: int) -> list[str]:
-    if god_id in _GREEK_GOD_IDS:      return GREEK_UNLOCK_NAMES
-    if god_id in _EGYPTIAN_GOD_IDS:   return EGYPTIAN_UNLOCK_NAMES
-    if god_id in _ATLANTEAN_GOD_IDS:  return ATLANTEAN_UNLOCK_NAMES
-    return NORSE_UNLOCK_NAMES
+# UNUSED: scenario rules look up `_CIV_UNLOCK_NAMES[god_civ]` directly. Kept (commented).
+# def _unlock_names_for_god(god_id: int) -> list[str]:
+#     """Map a god id to its civ's age-unlock item-name list.  Used internally
+#     by scenario rules to figure out which civ's age unlocks count for the
+#     scenario's currently-assigned god."""
+#     if god_id in _GREEK_GOD_IDS:      return GREEK_UNLOCK_NAMES
+#     if god_id in _EGYPTIAN_GOD_IDS:   return EGYPTIAN_UNLOCK_NAMES
+#     if god_id in _ATLANTEAN_GOD_IDS:  return ATLANTEAN_UNLOCK_NAMES
+#     return NORSE_UNLOCK_NAMES
 
 
 # --------------------------------------------------
@@ -344,8 +420,20 @@ if _ATLANTEAN_TYPES:
 
 
 def _item_point_value(item: aomItemData) -> float:
+    """Score an item for the per-scenario points gate.
+
+    Reginleif/Odysseus "Joins" items are special-cased high (4.0) because
+    they grant a hero immediately on receipt and substantially boost combat.
+
+    Hero stat/action/special boosts are scaled by the hero's relative usefulness:
+      Arkantos        : x2.0 (always present in FotT, gets the most mileage)
+      Odysseus/Reginleif: x0.5 (only present in 1-2 scenarios)
+      Other heroes      : x1.0
+    """
     if item == aomItemData.REGINLEIF_JOINS or item == aomItemData.ODYSSEUS_JOINS:
         return 4.0
+    if item == aomItemData.AJAX_AMANRA_DREAMS:
+        return 0.0
 
     base = _BASE_POINTS.get(item.type_data, 0.0)
     if base == 0.0:
@@ -364,10 +452,15 @@ def _item_point_value(item: aomItemData) -> float:
 
 
 def build_point_table() -> dict[str, float]:
+    """Build {item_name: points} for every item in the catalog.  Computed once
+    per `set_rules` invocation and passed to every per-scenario rule so the
+    per-call cost is just dict lookups."""
     return {item.item_name: _item_point_value(item) for item in aomItemData}
 
 
 def count_points(state: CollectionState, player: int, point_table: dict[str, float]) -> float:
+    """Sum of points across all items the player currently has.  AP calls
+    this many times during fill, so it's optimized to skip 0-valued items."""
     total = 0.0
     for item_name, value in point_table.items():
         if value > 0.0:
@@ -578,6 +671,14 @@ def _make_scenario_rule(
 
 
 def _get_scenario_god(world, scenario_n: int) -> int:
+    """Resolve the god assigned to a scenario for rule purposes.  When
+    `random_major_gods` is on `world.god_assignments` is a real mapping;
+    otherwise fall back to the vanilla god so non-randomized seeds still
+    use the correct civ for unit-availability rules.
+
+    Args:
+        scenario_n: APScenarioID (the scenario's `global_number`).
+    """
     assignments = getattr(world, "god_assignments", {})
     if assignments:
         return assignments.get(scenario_n, _VANILLA_GODS[scenario_n])
@@ -589,6 +690,17 @@ def _get_scenario_god(world, scenario_n: int) -> int:
 # --------------------------------------------------
 
 def place_completion_events(world) -> None:
+    """Place a locked event item on every scenario's COMPLETION location and
+    the singular Victory item on FOTT_32's Victory location.
+
+    Completion event items have `code=None` so they only exist in collection
+    state — they're not real AP items.  Other rules check
+    `state.has(<event_name>, player)` to see if a scenario was beaten.
+
+    Skips scenarios in disabled campaigns.
+
+    Called from `set_rules`.
+    """
     player    = world.player
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
@@ -615,6 +727,18 @@ def place_completion_events(world) -> None:
 # --------------------------------------------------
 
 def set_section_rules(world) -> None:
+    """Install access rules for each Menu→<campaign-section> entrance.
+
+    The four FotT sections gate on their Campaign item (Greek/Egyptian/Norse
+    Scenarios, plus optional NewAtlantis and GoldenGift).  The Final section
+    is gated by the FinalScenarios option (always_open / atlantis_key /
+    beat_x_scenarios).
+
+    Disabled campaigns are skipped — `regions/Regions.py` won't have created
+    those entrances either.
+
+    Called from `set_rules`.
+    """
     player    = world.player
     multiworld = world.multiworld
     from ..locations.Campaigns import aomCampaignData
@@ -655,6 +779,26 @@ def set_section_rules(world) -> None:
 # --------------------------------------------------
 
 def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> None:
+    """Apply per-scenario age/military/points access rules to every
+    section→scenario entrance.
+
+    Three kinds of scenarios get different rule machinery:
+      * `_SCENARIO_AGE_CAP[n]` — fixed-age scenarios; uses
+        `_make_age_capped_scenario_rule` (no unlock items needed).
+      * `_SCENARIO_HEROIC_FLOOR` — Heroic-floor + Mythic-max; uses
+        `_make_heroic_floor_scenario_rule` (3 unlocks for Mythic).
+      * everything else — uses `_make_scenario_rule` with min_required_unlocks
+        and points gates pulled from `_SCENARIO_DATA`.
+
+    Two scenarios get hard-floor add_rules layered on top:
+      * scenario 2: needs at least 1 unlock (Advance to Classical objective)
+      * scenario 32: needs 3 unlocks (must reach Mythic to build the Wonder)
+
+    Args:
+        world:        the aomWorld
+        point_table:  output of `build_point_table()` — passed in to avoid
+                      rebuilding it per-scenario.
+    """
     player    = world.player
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
@@ -764,6 +908,14 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
 # --------------------------------------------------
 
 def exclude_scenario_32_locations(world) -> None:
+    """Mark non-victory FOTT_32 locations as EXCLUDED so AP fill won't place
+    progression items there.  Scenario 32 is the win condition — players
+    shouldn't be required to collect optional objectives or relics there
+    just to finish a multiworld.  Victory and COMPLETION are exempt
+    (Victory holds the actual Victory item; COMPLETION is the locked event).
+
+    Called from `set_rules`.
+    """
     player    = world.player
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
@@ -786,6 +938,13 @@ def exclude_scenario_32_locations(world) -> None:
 # --------------------------------------------------
 
 def set_item_placement_restrictions(world) -> None:
+    """Forbid each campaign's section-unlock item from being placed at any
+    location inside that same section.  Without this, a player could be
+    locked behind their own section unlock — e.g. Greek Scenarios placed
+    inside scenario 5, which is itself inside the Greek section.
+
+    Called from `set_rules`.
+    """
     player    = world.player
     multiworld = world.multiworld
     campaign_to_forbidden = {
@@ -814,6 +973,15 @@ def set_item_placement_restrictions(world) -> None:
 # --------------------------------------------------
 
 def set_completion_rule(world) -> None:
+    """Tell AP what 'beating the multiworld' means for this slot:
+    receiving the Victory item.  Called once during set_rules.
+
+    NOTE: this function is currently NOT called from `set_rules` — the win
+    condition is implicit because the Victory item is locked to FOTT_32's
+    Victory location and standard AP framework treats holding the Victory
+    item as the world's completion signal.  Kept here for clarity in case
+    future changes need explicit completion wiring.
+    """
     world.multiworld.completion_condition[world.player] = (
         lambda state: state.has("Victory", world.player)
     )
@@ -937,6 +1105,20 @@ def set_shop_rules(world) -> None:
             )
 
 def set_rules(world) -> None:
+    """Top-level entry point — Archipelago calls this after create_regions /
+    create_items.  Order matters:
+
+      1. build_point_table     — once, used by every scenario rule below.
+      2. exclude_scenario_32   — must run before any rule walks FOTT_32 locations.
+      3. place_completion_events / place_gems / place_progressive_shop_info
+         — forced placements; must run before AP's main fill so those slots
+         are reserved.
+      4. set_section_rules     — Menu→section gates.
+      5. set_scenario_age_and_point_rules — section→scenario gates.
+      6. set_item_placement_restrictions — forbid section-unlock items inside
+         their own sections.
+      7. set_shop_rules        — only meaningful when gem_shop is on.
+    """
     point_table = build_point_table()
     exclude_scenario_32_locations(world)
     place_completion_events(world)

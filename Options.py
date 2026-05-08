@@ -1,3 +1,50 @@
+# =============================================================================
+# Age of Mythology Retold — YAML Option Definitions
+# =============================================================================
+#
+# Every player-facing option is defined here as an Archipelago `Choice`,
+# `Range`, or `Toggle` subclass.  The `AomOptions` dataclass at the bottom
+# binds each class to its YAML key — that is the single source of truth used
+# by the Archipelago framework to parse YAMLs and by `aomWorld.options` at
+# runtime.
+#
+# Lifecycle:
+#   * The Archipelago website reads the option metadata (display_name,
+#     internal_name, defaults, docstring) and renders the YAML template.
+#   * At generation time the framework instantiates `AomOptions`, which
+#     populates `self.options` on `aomWorld`.
+#   * `aomWorld.generate_early()` (in __init__.py) reads `self.options.<x>.value`
+#     to drive every world-shaping decision (excluded civs, disabled campaigns,
+#     gem shop generation, etc.).  See the data-flow diagram in __init__.py.
+#   * Many options are echoed into `fill_slot_data()` so the running game
+#     client (client/ApClient.py + client/GameClient.py) can branch on them.
+#
+# Web display order is controlled by `aomWorld.web.option_groups` over in
+# __init__.py — keep that list in sync when adding new options.
+#
+# -----------------------------------------------------------------------------
+# ADDING A NEW OPTION
+# -----------------------------------------------------------------------------
+#   1. Subclass `Choice`/`Range`/`Toggle` here with `internal_name`,
+#      `display_name`, defaults, and a docstring (the docstring becomes the
+#      tooltip / YAML comment shown to players).
+#   2. Add a field on `AomOptions` whose attribute name matches
+#      `internal_name`.
+#   3. Import the class in __init__.py and (if user-facing) add it to a group
+#      in `aomWorld.web.option_groups`.
+#   4. Read the value in `generate_early()` (or wherever applies) via
+#      `self.options.<name>.value`.
+#   5. If the running game needs to know about the option, surface it from
+#      `fill_slot_data()` and consume it in client/ApClient.py + GameClient.py
+#      (XS emitter).
+#
+# Disabling civs / campaigns:
+#   The `shuffle_<civ>_major_gods` toggles drive `excluded_civs`, and the
+#   `<campaign>_campaign` toggles drive `disabled_campaigns`.  Items.py and
+#   Locations.py honor these by skipping civ-tagged items and excluded
+#   campaigns; Rules.py honors them by skipping rules for missing locations.
+# =============================================================================
+
 from dataclasses import dataclass
 
 from Options import Choice, PerGameCommonOptions, Range, StartInventoryPool, Toggle
@@ -199,7 +246,6 @@ class TrapPercentage(Range):
     """
     Percentage of filler items to replace with traps (0 = no traps, 100 = all filler becomes traps).
     Traps fire randomly during scenarios. Only filler items are replaced; useful items are never swapped for traps.
-    At 20%, there will be roughly 15 traps total.
     """
     internal_name = "trap_percentage"
     display_name  = "Trap Percentage"

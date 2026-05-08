@@ -1,4 +1,137 @@
 # world/aom/__init__.py
+#
+# =============================================================================
+# Age of Mythology Retold — Archipelago World Definition
+# =============================================================================
+#
+# Entry point for the AoMR Archipelago world.  Defines:
+#   * aomWorld   — the Archipelago World subclass (item pool, regions, rules)
+#   * AoMSettings— per-user host settings (game install path)
+#   * aomWebWorld— web template / YAML option grouping for the website
+#   * Vanilla data tables — _VANILLA_GODS, _MINOR_GOD_TECHS, _AGE_BASE_TECHS,
+#                            _SCENARIO_STARTING_AGE, _VANILLA_MINOR_GOD_TECHS,
+#                            _GOD_SPECIFIC_ARCHAIC_UNITS, _CIV_ARCHAIC_UNITS
+#
+# Architecture overview (data flow):
+#   YAML options ─► Options.py ─► aomWorld.generate_early()
+#                                        │
+#                                        ├─► god_assignments        (random major gods)
+#                                        ├─► minor_god_assignments  (floor age techs)
+#                                        ├─► minor_god_full         (all 3 tiers)
+#                                        ├─► archaic_forbids        (units to disable)
+#                                        ├─► shop_obelisk_assignments (gem shop)
+#                                        └─► god_power_assignments  (random GPs)
+#                                        │
+#                                  create_regions ─► regions/Regions.py
+#                                  create_items   ─► items/Items.py
+#                                  set_rules      ─► rules/Rules.py
+#                                  fill_slot_data ─► sent to ApClient at game start
+#                                        │
+#                                        ▼
+#                                  Archipelago server stores result, then at game-time
+#                                  the AP client (client/ApClient.py) connects and
+#                                  passes slot_data to GameClient.py which generates
+#                                  triggers/aom_state.xs that the running game reads.
+#
+# =============================================================================
+# EXTENDING THE WORLD — Quick-reference for adding more content
+# =============================================================================
+#
+# ### Adding a new CAMPAIGN (e.g. The Titans expansion):
+#   1. Pick a contiguous APScenarioID range that doesn't collide with existing
+#      blocks.  Current blocks: 1-32 (FotT), 501-512 (New Atlantis), 601-604
+#      (Golden Gift), 0 (Shop), 12 (FotT12 — Roc-bug-quirked).  Suggest 701+
+#      for the next campaign.
+#   2. Add a member to locations/Campaigns.py::aomCampaignData (and ensure its
+#      `id` does not collide).
+#   3. Define each scenario in locations/Scenarios.py::aomScenarioData with
+#      .global_number set to your APScenarioID range.
+#   4. Add scenario locations (objectives, relics, COMPLETION) in
+#      locations/Locations.py.
+#   5. Map each scenario's vanilla god in `_VANILLA_GODS` below and its starting
+#      age in `_SCENARIO_STARTING_AGE`.
+#   6. Add a vanilla minor god tech list per scenario in `_VANILLA_MINOR_GOD_TECHS`
+#      so the non-random_major_gods path mirrors AoM defaults.
+#   7. In the AoMR scenario editor, every scenario in the new campaign needs:
+#        * `xsEnableRule("APActivateScenario");` early in its Game Start trigger
+#        * `trQuestVarSet("APScenarioID", <your_id>);` before the rule fires
+#        * Reinforcement spawn flag (Player 12 unit named "APSpawn" or similar
+#          marker — see triggers/archipelago.xs::APFindReinforcementSpawn)
+#        * Trap revealer (Player 12 Revealer set to LOS 1000 by editor trigger)
+#        * Whatever per-scenario flags are required by the scenario's victory
+#          conditions (these are scenario-specific — examine the existing FotT
+#          scenarios in the editor for reference).
+#   8. Create a YAML option in Options.py to opt the campaign in/out, mirror
+#      the on/off pattern of FottGreekCampaign / NewAtlantis / GoldenGift.
+#   9. Surface that option in `aomWebWorld.option_groups` and respect it in
+#      `generate_early()` -> `disabled_campaigns`.
+#  10. Add a Campaign item in items/Items.py that grants section access if
+#      campaigns are gated.
+#
+# ### Adding a new MAJOR GOD (e.g. a 13th god):
+#   1. Pick the next free numeric ID (current top is 12 = Gaia).
+#   2. Add it to `_GOD_NAMES` and to the appropriate civ frozenset
+#      (`_GREEK_GODS` etc.) — or make a new civ frozenset (see "new pantheon"
+#      below).
+#   3. Add three entries to `_MINOR_GOD_TECHS` for tiers (id,1), (id,2),
+#      (id,3) — each a `[option_A, option_B]` of minor god tech consts.
+#   4. If god-specific archaic units exist (e.g. unique heroes), list them in
+#      `_GOD_SPECIFIC_ARCHAIC_UNITS` so they get forbidden when the god is
+#      reassigned away from a vanilla scenario.
+#   5. In triggers/archipelago.xs:
+#        * Add `cAPMajorXxx` constants (top of file).
+#        * Extend the major-god dispatch in APSetPlayerCiv (calls
+#          trPlayerSetCiv with the new god name string).
+#        * Extend APApplyAgeUnlocks branches to dispatch to the right civ's
+#          APApply*MinorGods.
+#        * Extend APInitGodPowers / APAnnounceGod / any other god switchboard.
+#   6. Add the god to GameClient.py's god name maps if any.
+#   7. Make sure the Archipelago YAML option list (Options.py
+#      `Greek_Major_Gods` etc., or a new option for a new pantheon) covers it.
+#
+# ### Adding a new MINOR GOD (e.g. an alternate Athena):
+#   1. Add new `cTechClassicalAge<NewMinor>` etc. age tech constants to the
+#      relevant `cTech*` const list at the top of triggers/archipelago.xs.
+#   2. Append to the relevant `_MINOR_GOD_TECHS[(major, tier)]` list (length 2).
+#   3. Add to all four `APForceDisableAll<Civ>AgeTechs` and
+#      `APDisableAll<Civ>AgeTechs` functions in triggers/archipelago.xs so the
+#      tech can be force-cleared between switches.
+#   4. The free sample myth unit is granted by the tech itself — no extra code
+#      unless you want a custom spawn.
+#
+# ### Adding a whole new PANTHEON (e.g. Aztec):
+#   This is the largest extension and crosses every major file.
+#   1. Add the civ to `_civ_of_god`, `_civ_of_god_name`, create a new frozenset
+#      `_AZTEC_GODS = frozenset({13,14,15})`, fold into `_ALL_GODS_WITH_ATLANTIS`
+#      (or add a new aggregate set if needed).
+#   2. Add `_AGE_BASE_TECHS["Aztec"] = {1:..., 2:..., 3:...}`.
+#   3. Add per-god minor god lists in `_MINOR_GOD_TECHS`.
+#   4. Add scenarios using these gods (see "new campaign" above).
+#   5. In Options.py: add `AztecMajorGods` boolean and wire it into
+#      `excluded_civs` in `generate_early()` of aomWorld.
+#   6. In Items.py: add `<Aztec>AgeUnlock` item, civ-tagged units/myth units
+#      and any culture-tagged items.  Make sure `culture` field is set so the
+#      civ-exclusion logic in `create_items()` filters correctly.
+#   7. In triggers/archipelago.xs:
+#        * Add `cAPMajor*` constants for each new god.
+#        * Add `APForceDisableAllAztecAgeTechs` / `APDisableAllAztecAgeTechs`.
+#        * Add `APApplyAztecMinorGods` mirroring the existing Greek/Egyptian/
+#          Norse/Atlantean variants.
+#        * Extend `APApplyAgeUnlocks` to dispatch to the new civ.
+#        * Extend `APSetPlayerCiv` to switch on the new civ.
+#        * Add `cAZTEC_AGE_UNLOCK` item ID and counting branch.
+#   8. In GameClient.py: add the civ's age tech IDs to the dispatch tables and
+#      any per-civ unit unlocks emitted into the generated XS state.
+#
+# ### Adding a new CIVILIZATION-SPECIFIC item or location:
+#   1. Items: add an entry in items/Items.py with `culture="<Civ>"` so the
+#      `create_items()` exclusion logic filters when that civ is disabled.
+#   2. Locations: add to locations/Locations.py.  If it's tied to a specific
+#      scenario, set `scenario` to that scenario; the campaign disable check
+#      in `create_items()` will hide locations in disabled campaigns.
+#   3. Reinforce with a region-and-rules entry if it has prerequisites.
+#
+# =============================================================================
 
 from __future__ import annotations
 
@@ -129,12 +262,19 @@ _GOD_NAMES     = {
 }
 
 def _civ_of_god(god: int) -> frozenset:
+    """Return the frozenset of god ids belonging to the same civilization
+    as `god`.  Used by `_generate_god_assignments` (force_different_god
+    branch) when we want to exclude the entire vanilla civ from the
+    candidate pool."""
     if god in _GREEK_GODS:     return _GREEK_GODS
     if god in _EGYPTIAN_GODS:  return _EGYPTIAN_GODS
     if god in _ATLANTEAN_GODS: return _ATLANTEAN_GODS
     return _NORSE_GODS
 
 def _civ_of_god_name(god: int) -> str:
+    """Return the civilization label ("Greek"/"Egyptian"/"Norse"/"Atlantean")
+    for a god id.  Used wherever we need the civ as a string key — e.g. into
+    `_AGE_BASE_TECHS`, into `_CIV_ARCHAIC_UNITS`, or for slot_data emission."""
     if god in _GREEK_GODS:     return "Greek"
     if god in _EGYPTIAN_GODS:  return "Egyptian"
     if god in _ATLANTEAN_GODS: return "Atlantean"
@@ -357,9 +497,16 @@ class aomWorld(World):
     location_id_to_name = Locations.location_id_to_name
 
     def create_regions(self) -> None:
+        """Archipelago hook — delegates to `regions/Regions.py::create_regions`,
+        which builds the menu/region/location graph for this player slot."""
         Regions.create_regions(self.multiworld, self.player)
 
     def _starting_campaign(self) -> Campaigns.aomCampaignData:
+        """Resolve which campaign the player begins with — used by
+        `create_items()` to precollect that campaign's section unlock and by
+        Rules.py to gate Final-section access in beat_x mode.
+        Honors `_fallback_start_campaign` if `generate_early()` redirected
+        away from a disabled-by-YAML campaign."""
         fallback = getattr(self, "_fallback_start_campaign", None)
         if fallback is not None:
             return fallback
@@ -373,9 +520,17 @@ class aomWorld(World):
         return mapping.get(value, Campaigns.aomCampaignData.FOTT_GREEK)
 
     def _final_mode(self) -> int:
+        """Return the FinalScenarios option value — controls whether the Final
+        section is gated by the Atlantis Key item or by completion-count of
+        non-final scenarios.  Read by `create_items()` and `Rules.py`."""
         return int(self.options.final_scenarios.value)
 
     def create_item(self, name: str) -> Item:
+        """Archipelago hook — convert an item name string into an `Item`
+        object owned by this player.  Looks up classification from
+        `Items.item_type_to_classification` and id from the item's data
+        record.  Called from many places — `create_items` for the main pool,
+        and by Rules.py for forced placements (Victory, Gem, ProgressiveShopInfo)."""
         item = Items.NAME_TO_ITEM[name]
         return Item(
             item.item_name,
@@ -385,6 +540,10 @@ class aomWorld(World):
         )
 
     def get_filler_item_name(self) -> str:
+        """Archipelago hook — return the name of an arbitrary filler item.
+        Called by the multiworld when it needs to pad an item pool.
+        Excludes Gem because gems are locked to Victory locations by
+        `Rules.place_gems()` and must not appear at non-victory slots."""
         # Exclude Gem: gems are locked to Victory locations by place_gems() and
         # should never appear as padding filler at objective/relic locations.
         non_gem = [item.item_name for item in Items.filler_items
@@ -392,6 +551,25 @@ class aomWorld(World):
         return self.random.choice(non_gem)
 
     def generate_early(self) -> None:
+        """Archipelago hook — runs once before regions/items/rules are built.
+        Reads YAML options and produces all derived per-world tables that
+        downstream stages and the slot_data payload depend on:
+
+          * `excluded_civs`            — civs the player opted out of
+          * `_allowed_god_ids`         — gods available for random_major_gods
+          * `god_assignments`          — random major god per scenario
+          * `minor_god_assignments`    — floor base+minor age techs per scenario
+          * `minor_god_full`           — chosen+rejected per tier per scenario
+          * `archaic_forbids`          — archaic units to forbid at scenario start
+          * `gem_shop_enabled` + assignments
+          * `relicsanity_enabled`
+          * `disabled_campaigns`
+          * `_fallback_start_campaign` (only if starting campaign was disabled)
+          * `god_power_assignments`    — random GP per tier per scenario
+
+        Order matters — the random-driven generators are deterministic with
+        respect to `self.random`, and re-ordering would invalidate existing
+        seeds for in-progress runs."""
         _rmg_on = bool(self.options.random_major_gods.value)
 
         # Compute excluded civilizations from per-pantheon boolean options.
@@ -540,14 +718,22 @@ class aomWorld(World):
             assignments[scenario_id] = self.random.choice(candidates)
         return assignments
 
-    def _log_god_assignments(self, assignments: dict[int, int]) -> None:
-        from .locations.Scenarios import aomScenarioData
-        lines = ["Random_Major_Gods god assignments:"]
-        for scenario in aomScenarioData:
-            n   = scenario.global_number
-            god = _GOD_NAMES.get(assignments.get(n, 0), "Unknown")
-            lines.append(f"  {scenario.display_name}: {god}")
-        logger.info("\n".join(lines))
+    # UNUSED: never called. Kept (commented) as a manual-debug helper for RNG drift.
+    # def _log_god_assignments(self, assignments: dict[int, int]) -> None:
+    #     """Diagnostic log dump of every scenario's assigned god — useful when
+    #     debugging seed/RNG drift between generations.  Currently not called
+    #     from a production code path; left in for manual debugging.
+    #
+    #     Args:
+    #         assignments: scenario_id -> god_id (1-12) mapping.
+    #     """
+    #     from .locations.Scenarios import aomScenarioData
+    #     lines = ["Random_Major_Gods god assignments:"]
+    #     for scenario in aomScenarioData:
+    #         n   = scenario.global_number
+    #         god = _GOD_NAMES.get(assignments.get(n, 0), "Unknown")
+    #         lines.append(f"  {scenario.display_name}: {god}")
+    #     logger.info("\n".join(lines))
 
     def _generate_archaic_forbids(self) -> dict[int, list]:
         """Returns {scenario_id: [unit_name, ...]} of units to forbid at
@@ -811,6 +997,16 @@ class aomWorld(World):
                 if _all_fott_disabled:
                     continue
 
+            if item == Items.aomItemData.AJAX_AMANRA_DREAMS:
+                from .locations.Campaigns import aomCampaignData as _C
+                _all_fott_disabled = (
+                    _C.FOTT_GREEK in self.disabled_campaigns
+                    and _C.FOTT_EGYPTIAN in self.disabled_campaigns
+                    and _C.FOTT_NORSE in self.disabled_campaigns
+                )
+                if _all_fott_disabled:
+                    continue
+
             # Atlantean items — skip if random_major_gods is off (Atlantis not in the pool)
             if isinstance(item.type, atlantean_types) and not random_major_gods_on:
                 continue
@@ -1032,23 +1228,63 @@ class aomWorld(World):
         self.random.shuffle(all_filler)
         self.random.shuffle(all_nonreinf_filler_inf)
 
-        # Fill remaining slots with 1:1 useful:filler ratio.
-        # When a filler item is drawn, roll against trap_pct — if hit, replace with a trap.
-        # Useful slots: use useful; if exhausted → draw from filler instead.
-        # Filler slots: use filler; if exhausted → cycle non-reinforcement filler (no useful repeats).
-        # Both exhaust paths use non-reinforcement filler duplicates for infinite padding.
+        # Fill remaining slots in two phases:
+        #   Unique phase  (while either pool has items): 1:1 useful:filler alternation.
+        #     Useful exhausted mid-phase → draw filler that turn instead.
+        #     Filler exhausted mid-phase → cycle infinite non-reinforcement filler.
+        #   Padding phase (both pools exhausted):        5:1 filler:useful from infinite pools.
+        #     Filler draws cycle all_nonreinf_filler_inf; useful draws cycle _repeatable_useful_names.
+        # Trap replacement: filler/overflow turns roll against trap_pct; useful turns roll
+        # against useful_trap_pct (10% of trap_pct).
         itempool: list[Item] = []
         itempool.extend(progression_pool)
         remaining_slots = visible_location_count - len(itempool)
 
         u_idx = f_idx = inf_idx = 0
-        want_useful = True  # alternates between useful and filler
+        useful_trap_pct = trap_pct // 10  # 10% of the filler trap rate
+        want_useful = True   # unique phase: alternates each slot
+        pad_slot = 0         # padding phase: 0-4 = filler, 5 = useful, then repeats
+        pad_useful_idx = 0   # padding phase: cycles through _repeatable_useful_names
         for _ in range(remaining_slots):
-            if want_useful:
-                if u_idx < len(all_useful):
-                    itempool.append(self.create_item(all_useful[u_idx])); u_idx += 1
+            both_exhausted = (u_idx >= len(all_useful)) and (f_idx >= len(all_filler))
+
+            if both_exhausted:
+                # Padding phase: 5 filler then 1 useful, repeating
+                if pad_slot == 5:
+                    pad_name  = _repeatable_useful_names[pad_useful_idx % len(_repeatable_useful_names)]
+                    pad_useful_idx += 1
+                    trap_roll = useful_trap_pct
                 else:
-                    # Useful exhausted — draw filler instead
+                    pad_name  = all_nonreinf_filler_inf[inf_idx % len(all_nonreinf_filler_inf)]
+                    inf_idx  += 1
+                    trap_roll = trap_pct
+                if trap_roll > 0 and self.random.randint(1, 100) <= trap_roll:
+                    itempool.append(self.create_item(_next_trap()))
+                else:
+                    itempool.append(self.create_item(pad_name))
+                pad_slot = (pad_slot + 1) % 6
+            else:
+                # Unique phase: 1:1 useful:filler
+                if want_useful:
+                    if u_idx < len(all_useful):
+                        useful_name = all_useful[u_idx]; u_idx += 1
+                        if useful_trap_pct > 0 and self.random.randint(1, 100) <= useful_trap_pct:
+                            itempool.append(self.create_item(_next_trap()))
+                        else:
+                            itempool.append(self.create_item(useful_name))
+                    else:
+                        # Useful exhausted — draw filler instead
+                        if f_idx < len(all_filler):
+                            filler_name = all_filler[f_idx]; f_idx += 1
+                        else:
+                            filler_name = all_nonreinf_filler_inf[inf_idx % len(all_nonreinf_filler_inf)]
+                            inf_idx += 1
+                        if trap_pct > 0 and self.random.randint(1, 100) <= trap_pct:
+                            itempool.append(self.create_item(_next_trap()))
+                        else:
+                            itempool.append(self.create_item(filler_name))
+                else:
+                    # Filler turn — never fall back to useful
                     if f_idx < len(all_filler):
                         filler_name = all_filler[f_idx]; f_idx += 1
                     else:
@@ -1058,18 +1294,7 @@ class aomWorld(World):
                         itempool.append(self.create_item(_next_trap()))
                     else:
                         itempool.append(self.create_item(filler_name))
-            else:
-                # Filler turn — never fall back to useful
-                if f_idx < len(all_filler):
-                    filler_name = all_filler[f_idx]; f_idx += 1
-                else:
-                    filler_name = all_nonreinf_filler_inf[inf_idx % len(all_nonreinf_filler_inf)]
-                    inf_idx += 1
-                if trap_pct > 0 and self.random.randint(1, 100) <= trap_pct:
-                    itempool.append(self.create_item(_next_trap()))
-                else:
-                    itempool.append(self.create_item(filler_name))
-            want_useful = not want_useful
+                want_useful = not want_useful
 
         if len(itempool) != visible_location_count:
             raise ValueError(
@@ -1081,10 +1306,29 @@ class aomWorld(World):
         self.multiworld.itempool += itempool
 
     def set_rules(self) -> None:
+        """Archipelago hook — install access/completion rules and forced
+        placements (Victory, Gem, Progressive Shop Info).  Delegates to
+        `rules/Rules.py::set_rules`."""
         Rules.set_rules(self)
 
 
     def fill_slot_data(self) -> Mapping[str, Any]:
+        """Archipelago hook — produce the per-slot data blob that the
+        Archipelago server stores and ships to the client at connect time.
+
+        Everything the running game needs to know up-front lives here:
+        version stamps, disabled campaigns, world id, final-mode flag,
+        random_major_gods state and god/minor-god/archaic/godpower
+        assignments, plus shop assignments + per-slot item details when
+        gem_shop is enabled.
+
+        Receiver: client/ApClient.py — copies fields into `self.game_ctx`
+        (see `_load_slot_data`) which then feeds GameClient.py for XS
+        emission.
+
+        Bumping schema: increment `version_minor` for additive changes;
+        bump `version_major` only when older clients can't read the new
+        payload (then update ApClient.py compatibility checks)."""
         data: dict = {
             "version_public": 0,
             "version_major":  2,
@@ -1155,6 +1399,11 @@ class aomWorld(World):
         return data
 
 def run_client(*args: Any) -> None:
+    """Archipelago Launcher entry point — invoked when the user clicks
+    "Age Of Mythology Retold Client" in the AP Launcher.  Spawns the AP
+    client (client/ApClient.py::main) in its own subprocess so the
+    Launcher's event loop is not blocked.  *args are forwarded by the
+    Launcher and currently unused — kept for forward compatibility."""
     print("Running Age Of Mythology Retold Client")
     from .client.ApClient import main
     launch_subprocess(main, name="aomClient")
