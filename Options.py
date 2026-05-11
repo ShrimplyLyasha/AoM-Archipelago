@@ -272,9 +272,7 @@ class TrapPercentage(Range):
 
 class ForceLocalFiller(Toggle):
     """
-    When enabled, all filler items are forced to stay in your own game (they will only appear at your own locations).
-    This means filler slots in other players' worlds will never receive your filler items.
-    Useful if you prefer not to send filler to others and want your filler pool concentrated locally.
+    When enabled, all of your filler items stay in your own game.
     """
     internal_name = "force_local_filler"
     display_name  = "Force Local Filler"
