@@ -319,6 +319,59 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
         next_name = _TRAP_NAMES.get(queue[0], f"Trap {queue[0]}") if queue else ""
         ctx.ui.update_trap_status(len(queue), next_name)
 
+    if hasattr(ctx.ui, "update_scenarios_view"):
+        scenario_to_key_id = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
+        bundle_display_names = getattr(ctx.game_ctx, "bundle_display_names", {}) or {}
+        usos = int(getattr(ctx.game_ctx, "unlock_sets_of_scenarios", 0))
+        received = set(ctx.game_ctx.received_items)
+        held_keys = {iid for iid in scenario_to_key_id.values() if iid in received}
+        from ..items.Items import aomItemData as _IData
+        threshold_val = getattr(ctx, "_x_scenarios_threshold", None)
+        beaten = _count_beaten_scenarios(ctx)
+        has_atlantis_now = (_IData.ATLANTIS_KEY.id in received) or (
+            threshold_val is not None and beaten >= threshold_val
+        )
+        campaign_unlocked_by_id = {
+            1: _IData.GREEK_SCENARIOS.id    in received,
+            2: _IData.EGYPTIAN_SCENARIOS.id in received,
+            3: _IData.NORSE_SCENARIOS.id    in received,
+            4: has_atlantis_now,
+            5: _IData.UNLOCK_NEW_ATLANTIS.id in received,
+            6: _IData.UNLOCK_GOLDEN_GIFT.id  in received,
+        }
+        disabled_ids = set(getattr(ctx, "_disabled_campaign_ids", set()))
+        
+        # Build scenario_to_god mapping
+        scenario_to_god = {}
+        god_names = {
+            1: "Zeus",   2: "Poseidon", 3: "Hades",
+            4: "Isis",   5: "Ra",       6: "Set",
+            7: "Odin",   8: "Thor",     9: "Loki",
+            10: "Kronos", 11: "Oranos", 12: "Gaia",
+        }
+        god_assignments = getattr(ctx.game_ctx, "god_assignments", {}) or {}
+        for scenario_id, god_id in god_assignments.items():
+            if god_id in god_names:
+                scenario_to_god[scenario_id] = god_names[god_id]
+        
+        # Build scenario_check_counts mapping
+        scenario_check_counts = {}
+        from ..locations.Locations import SCENARIO_TO_LOCATIONS, aomLocationType
+        from ..locations.Scenarios import aomScenarioData
+        for scenario in aomScenarioData:
+            locations = SCENARIO_TO_LOCATIONS.get(scenario, [])
+            # Count OBJECTIVE and VICTORY locations (actual checks)
+            total_checks = len([l for l in locations if l.type in (aomLocationType.OBJECTIVE, aomLocationType.VICTORY)])
+            found_checks = len([l for l in locations if l.type in (aomLocationType.OBJECTIVE, aomLocationType.VICTORY) and l.id in ctx.game_ctx.sent_checks])
+            if total_checks > 0:
+                scenario_check_counts[scenario.global_number] = (found_checks, total_checks)
+        
+        ctx.ui.update_scenarios_view(
+            usos, scenario_to_key_id, bundle_display_names,
+            held_keys, campaign_unlocked_by_id, disabled_ids,
+            scenario_to_god, scenario_check_counts,
+        )
+
 
 def _format_progress(ctx: "AoMContext") -> str:
 
@@ -452,6 +505,37 @@ class AoMCommandProcessor(ClientCommandProcessor):
         self.output(f"=== Not Started ({len(untouched_list)}) ===")
         for name in untouched_list:
             self.output(f"  {name}")
+
+        # Per-scenario key status — only meaningful when unlock_sets_of_scenarios > 0.
+        usos = int(getattr(ctx.game_ctx, "unlock_sets_of_scenarios", 0))
+        if usos > 0:
+            scenario_to_key_id = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
+            held_keys = {iid for iid in scenario_to_key_id.values() if iid in received}
+
+            campaign_unlocked_by_id = {
+                1: has_greek, 2: has_egyptian, 3: has_norse,
+                4: has_atlantis, 5: has_na, 6: has_gg,
+            }
+
+            self.output(f"=== Scenario Keys (unlock_sets_of_scenarios = {usos}) ===")
+            held_count = len(held_keys)
+            total_keys = len({iid for iid in scenario_to_key_id.values()})
+            self.output(f"  Bundles unlocked: {held_count} / {total_keys}")
+            for scenario in aomScenarioData:
+                if scenario.campaign.id in disabled_ids:
+                    continue
+                kid = scenario_to_key_id.get(scenario.global_number)
+                key_held = (kid in held_keys) if kid is not None else False
+                campaign_open = bool(campaign_unlocked_by_id.get(scenario.campaign.id, False))
+                if key_held and campaign_open:
+                    mark = "[v]"
+                elif key_held:
+                    mark = "[K]"   # have the key, campaign still locked
+                elif campaign_open:
+                    mark = "[C]"   # campaign open, missing the key
+                else:
+                    mark = "[X]"   # both locked
+                self.output(f"  {mark} {scenario.display_name}")
 
     # ---------------------------------------------------------------------------
     # Civilization item commands — unit/myth unlocks and age unlocks only
@@ -1116,6 +1200,21 @@ class AoMContext(CommonContext):
         self.game_ctx.shop_obelisk_assignments = slot_data.get("shop_obelisk_assignments", {})
         self.game_ctx.shop_item_details     = {int(k): v for k, v in slot_data.get("shop_item_details", {}).items()}
         self.game_ctx.shop_hint_config      = slot_data.get("shop_hint_config", {})
+
+        # Scenario-key bundling
+        self.game_ctx.unlock_sets_of_scenarios = int(slot_data.get("unlock_sets_of_scenarios", 0))
+        raw_s2k = slot_data.get("scenario_to_key_id", {})
+        self.game_ctx.scenario_to_key_id = (
+            {int(k): int(v) for k, v in raw_s2k.items()} if raw_s2k else {}
+        )
+        raw_bdn = slot_data.get("bundle_display_names", {})
+        self.game_ctx.bundle_display_names = (
+            {int(k): str(v) for k, v in raw_bdn.items()} if raw_bdn else {}
+        )
+        self.game_ctx.starter_bundle_key_id = slot_data.get("starter_bundle_key_id")
+        self._unlock_sets_of_scenarios = self.game_ctx.unlock_sets_of_scenarios
+        self._scenario_to_key_id = self.game_ctx.scenario_to_key_id
+        self._bundle_display_names = self.game_ctx.bundle_display_names
         from ..locations.Locations import SHOP_SLOT_ORDER
         self.game_ctx.shop_slot_order       = list(SHOP_SLOT_ORDER)
         _update_atlantis_ui(self)

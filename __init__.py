@@ -170,6 +170,7 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     FottEgyptianCampaign,
     FottNorseCampaign,
     UpdateBuildingsForRandomGod,
+    UnlockSetsOfScenarios,
 )
 from .items import Items
 from .locations import Campaigns, Locations
@@ -205,6 +206,7 @@ class aomWebWorld(WebWorld):
             NewAtlantis,
             GoldenGift,
             Relicsanity,
+            UnlockSetsOfScenarios,
         ]),
         OptionGroup("Random Major Gods", [
             Random_Major_Gods,
@@ -440,6 +442,21 @@ _VANILLA_MINOR_GOD_TECHS: dict[int, list] = {
 
 
 # ---------------------------------------------------------------------------
+# Scenario-key bundling — sphere-1 scenarios (no logical requirements) per
+# campaign. Used to seed the precollected starter bundle so the player
+# always has something they can immediately play.
+# ---------------------------------------------------------------------------
+_SPHERE_ONE_BY_CAMPAIGN: dict[str, list[int]] = {
+    "FOTT_GREEK":    [1, 9, 10],
+    "FOTT_EGYPTIAN": [11, 16],
+    "FOTT_NORSE":    [25, 29],
+    "FOTT_FINAL":    [],
+    "NEW_ATLANTIS":  [506, 507],
+    "GOLDEN_GIFT":   [604],
+}
+
+
+# ---------------------------------------------------------------------------
 # Archaic-age units enabled by the scenario editor per vanilla god/civ.
 # These need to be explicitly forbidden if the assigned god differs.
 # ---------------------------------------------------------------------------
@@ -658,6 +675,11 @@ class aomWorld(World):
         # for deterministic regeneration). Must run after disabled_campaigns is set.
         self.god_power_assignments: dict[int, list[str]] = self._generate_god_power_assignments()
 
+        # Scenario-key bundling — must run after disabled_campaigns is set (so we
+        # only bundle scenarios in active campaigns) and after god_assignments
+        # (not strictly needed but keeps RNG ordering predictable).
+        self._generate_scenario_bundles()
+
 
 
     def _generate_shop_assignments(self) -> tuple:
@@ -865,6 +887,177 @@ class aomWorld(World):
 
         return result
 
+    def _generate_scenario_bundles(self) -> None:
+        """Compute scenario-key bundles when `unlock_sets_of_scenarios > 0`.
+
+        Result attributes (always set, even when option is 0):
+          * `unlock_sets_of_scenarios` (int)
+          * `scenario_bundles` (list[list[int]]) — bundle index → scenario IDs
+          * `scenario_to_key_id` (dict[int, int]) — scenario global → AP item id
+          * `bundle_display_names` (dict[int, str]) — AP item id → friendly name
+          * `starter_bundle_key_id` (int|None) — precollected key, or None when off
+
+        Bundle algorithm:
+          starter bundle = ceil(N/2) scenarios, includes >=1 sphere-1 scenario
+            from the player's starting (or fallback) campaign.
+          remaining bundles: random size = round((rand(1,N) + rand(1,N) + rand(1,N))/3),
+            capped at remaining count. Bundle contents are arbitrary across all
+            active campaigns (cross-campaign allowed).
+
+        Asserts that we don't exceed the 50 pre-registered SCENARIO_KEY slots.
+        """
+        from .locations.Scenarios import aomScenarioData
+
+        N = int(self.options.unlock_sets_of_scenarios.value)
+        self.unlock_sets_of_scenarios = N
+        self.scenario_bundles: list[list[int]] = []
+        self.scenario_to_key_id: dict[int, int] = {}
+        self.bundle_display_names: dict[int, str] = {}
+        self.starter_bundle_key_id: int | None = None
+
+        # Per-slot bank assignment: each AoM slot gets its own 50-id bank
+        # within the SCENARIO_KEY range.  AoM slots in this multiworld are
+        # ordered by player number; bank index = position in that ordering.
+        # Cap = SCENARIO_KEY_MAX_SLOTS (8).  Two AoM slots therefore never
+        # collide on the shared item-name registries.
+        aom_player_ids = sorted(
+            p for p in self.multiworld.player_ids
+            if getattr(self.multiworld.worlds.get(p), "game", "") == AOMR
+        )
+        try:
+            slot_index = aom_player_ids.index(self.player)
+        except ValueError:
+            slot_index = 0
+        if slot_index >= Items.SCENARIO_KEY_MAX_SLOTS:
+            raise ValueError(
+                f"AoM Archipelago: Scenario Keys support a maximum of "
+                f"{Items.SCENARIO_KEY_MAX_SLOTS} simultaneous AoM slots; "
+                f"this multiworld has more."
+            )
+        self._scenario_key_bank_base = (
+            Items.SCENARIO_KEY_BASE_ID + slot_index * Items.SCENARIO_KEY_BANK_SIZE
+        )
+        bank_base = self._scenario_key_bank_base
+        bank_size = Items.SCENARIO_KEY_BANK_SIZE
+
+        # Reset this slot's bank to generic names — protects against repeated
+        # generations in the same Python process leaving stale bundle names.
+        for slot_idx in range(bank_size):
+            kid           = bank_base + slot_idx
+            key_obj       = Items.ID_TO_ITEM[kid]
+            generic_name  = f"Scenario Key {(kid - Items.SCENARIO_KEY_BASE_ID) + 1:03d}"
+            cur_name      = key_obj.item_name
+            if cur_name != generic_name:
+                Items.item_name_to_id.pop(cur_name, None)
+                Items.NAME_TO_ITEM.pop(cur_name, None)
+                try:
+                    aomWorld.item_names.discard(cur_name)
+                except AttributeError:
+                    pass
+            Items.item_name_to_id[generic_name] = kid
+            Items.item_id_to_name[kid]          = generic_name
+            Items.NAME_TO_ITEM[generic_name]    = key_obj
+            try:
+                aomWorld.item_names.add(generic_name)
+            except AttributeError:
+                pass
+            key_obj.item_name = generic_name
+
+        if N <= 0:
+            return
+
+        # All active scenario IDs (in active campaigns).
+        active_scenarios: list[int] = [
+            s.global_number for s in aomScenarioData
+            if s.campaign not in self.disabled_campaigns
+        ]
+        if not active_scenarios:
+            return
+
+        # Friendly display name per scenario, used for bundle names.
+        display_by_id: dict[int, str] = {
+            s.global_number: s.display_name for s in aomScenarioData
+        }
+
+        # Starter bundle: ceil(N/2) scenarios, including at least one sphere-1
+        # from the player's (resolved) starting campaign.
+        start_campaign = self._starting_campaign()
+        sphere_ones = [
+            sid for sid in _SPHERE_ONE_BY_CAMPAIGN.get(start_campaign.name, [])
+            if sid in active_scenarios
+        ]
+        if not sphere_ones:
+            # Last-ditch fallback: pick any sphere-1 across all active campaigns.
+            for camp_name, ids in _SPHERE_ONE_BY_CAMPAIGN.items():
+                sphere_ones = [sid for sid in ids if sid in active_scenarios]
+                if sphere_ones:
+                    break
+
+        starter_size = (N + 1) // 2  # ceil(N/2)
+        starter_size = min(starter_size, len(active_scenarios))
+
+        remaining_pool = list(active_scenarios)
+        self.random.shuffle(remaining_pool)
+
+        starter: list[int] = []
+        if sphere_ones:
+            seed_sid = self.random.choice(sphere_ones)
+            starter.append(seed_sid)
+            remaining_pool.remove(seed_sid)
+        # Pad starter bundle with random remaining scenarios up to starter_size.
+        while len(starter) < starter_size and remaining_pool:
+            starter.append(remaining_pool.pop())
+
+        bundles: list[list[int]] = [starter]
+
+        # Random bundling for the rest using bell-curve roll.
+        while remaining_pool:
+            roll_size = round(
+                (self.random.randint(1, N) + self.random.randint(1, N) + self.random.randint(1, N)) / 3
+            )
+            roll_size = max(1, min(roll_size, len(remaining_pool)))
+            bundles.append(remaining_pool[:roll_size])
+            remaining_pool = remaining_pool[roll_size:]
+
+        # Assert capacity vs this slot's bank size.
+        if len(bundles) > bank_size:
+            raise ValueError(
+                f"Scenario-key bundles ({len(bundles)}) exceed this slot's "
+                f"bank size ({bank_size}). Increase SCENARIO_KEY_BANK_SIZE in "
+                f"items/Items.py (and re-partition SCENARIO_KEY_MAX_SLOTS)."
+            )
+
+        # Assign each bundle to one id in this slot's bank, AND rename the
+        # registered item to embed bundle contents so spoiler logs, AP server
+        # chat, and hints all show the friendly bundle text.  Per-slot banking
+        # means two simultaneous AoM slots never write to the same id.
+        for bundle_idx, scenario_ids in enumerate(bundles):
+            key_item_id = bank_base + bundle_idx
+            key_obj     = Items.ID_TO_ITEM[key_item_id]
+            old_name    = key_obj.item_name
+            display     = ", ".join(display_by_id[sid] for sid in scenario_ids)
+            new_name    = f"Key to {display}"
+
+            self.scenario_bundles.append(list(scenario_ids))
+            for sid in scenario_ids:
+                self.scenario_to_key_id[sid] = key_item_id
+            self.bundle_display_names[key_item_id] = new_name
+
+            if old_name != new_name:
+                Items.item_name_to_id.pop(old_name, None)
+                Items.NAME_TO_ITEM.pop(old_name, None)
+                Items.item_name_to_id[new_name]    = key_item_id
+                Items.item_id_to_name[key_item_id] = new_name
+                Items.NAME_TO_ITEM[new_name]       = key_obj
+                key_obj.item_name = new_name
+                try:
+                    aomWorld.item_names.discard(old_name)
+                    aomWorld.item_names.add(new_name)
+                except AttributeError:
+                    pass
+
+        self.starter_bundle_key_id = bank_base  # first bundle in this slot's bank
+
     def create_items(self) -> None:
         """
         Build the item pool.
@@ -912,6 +1105,10 @@ class aomWorld(World):
                 continue
             if item_type == Items.Trap or (isinstance(item_type, type) and issubclass(item_type, Items.Trap)):
                 continue  # traps placed via trap_count option below
+
+            # Scenario Keys are not aomItemData enum members (registered as
+            # duck-typed objects in items/Items.py); pushed explicitly below
+            # after this loop using `self.bundle_display_names`.
 
             # Section unlock items
             if item_type == Items.Campaign:
@@ -1056,6 +1253,16 @@ class aomWorld(World):
                 raise ValueError(
                     f"Unhandled classification for {item.item_name}: {classification}"
                 )
+
+        # Scenario Keys — push one item per assigned bundle, precollect starter.
+        # Skipped entirely when unlock_sets_of_scenarios is 0 (no bundles).
+        if self.unlock_sets_of_scenarios > 0:
+            for kid, bundle_name in self.bundle_display_names.items():
+                ap_item = self.create_item(bundle_name)
+                if kid == self.starter_bundle_key_id:
+                    self.multiworld.push_precollected(ap_item)
+                else:
+                    progression_pool.append(ap_item)
 
         # Age unlock items — 3 base copies per civ, precollecting starting unlocks
         # Extra copies go to whichever civ is assigned to scenario 32
@@ -1362,6 +1569,12 @@ class aomWorld(World):
         data["minor_god_full"]        = self.minor_god_full
         data["archaic_forbids"]       = self.archaic_forbids
         data["god_power_assignments"] = self.god_power_assignments
+
+        # Scenario-key bundling
+        data["unlock_sets_of_scenarios"] = int(self.unlock_sets_of_scenarios)
+        data["scenario_to_key_id"]       = dict(self.scenario_to_key_id)
+        data["bundle_display_names"]     = dict(self.bundle_display_names)
+        data["starter_bundle_key_id"]    = self.starter_bundle_key_id
 
         if self.gem_shop_enabled:
             data["wins_to_open_shop"]   = int(self.options.wins_to_open_shop.value)

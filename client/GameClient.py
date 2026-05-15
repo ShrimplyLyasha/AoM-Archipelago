@@ -197,6 +197,11 @@ class AoMGameContext:
     server_known_checks: set[int] = field(default_factory=set)
     # Locked-scenario warnings already shown this connection.
     locked_warning_campaigns: set[str] = field(default_factory=set)
+    # Scenario-key bundling (unlock_sets_of_scenarios option)
+    unlock_sets_of_scenarios: int = 0
+    scenario_to_key_id: dict = field(default_factory=dict)     # scenario_global_number → AP item id
+    bundle_display_names: dict = field(default_factory=dict)   # AP item id → friendly bundle name
+    starter_bundle_key_id: int | None = None
     # Reserved for compatibility with older logic. The runtime log parser now
     # scans from byte 0 on every poll after the connect-time log purge.
     log_start_offset: int = 0
@@ -639,6 +644,21 @@ def write_aom_state(ctx: AoMGameContext) -> None:
                 lines.append(f"    trForbidProtounit(1, \"{unit}\");")
     # NA 7 (507) requires Rocs to complete — always unforbid them regardless of items.
     lines.append("    if (gAPScenarioId == 507) { trUnforbidProtounit(1, \"Roc\"); }")
+    lines.append("}")
+
+    # APInitScenarioKeys — sets quest vars APHasKey<scenarioId> = 1 if the
+    # player holds the Scenario Key for that scenario.  When the
+    # unlock_sets_of_scenarios option is 0 this emits a sentinel
+    # APScenarioKeysActive=0 so XS can short-circuit.
+    lines.append("")
+    lines.append("void APInitScenarioKeys()")
+    lines.append("{")
+    usos = int(getattr(ctx, "unlock_sets_of_scenarios", 0))
+    lines.append(f'    trQuestVarSet("APScenarioKeysActive", {1 if usos > 0 else 0});')
+    if usos > 0 and ctx.scenario_to_key_id:
+        for sid, kid in sorted(ctx.scenario_to_key_id.items()):
+            held = 1 if kid in received_set else 0
+            lines.append(f'    trQuestVarSet("APHasKey{sid}", {held});')
     lines.append("}")
 
     # NOTE: Previously emitted APUnforbidUnlockedUnits() here, which called
