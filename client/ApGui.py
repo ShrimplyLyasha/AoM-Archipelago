@@ -405,12 +405,573 @@ class AoMManager(GameManager):
                 self._trap_next_label.text  = f"[b][color={c}]Next Trap: {next_trap_name}[/color][/b]"
         Clock.schedule_once(_update)
 
+    # -------------------------------------------------------------------------
+    # Civilizations Tab
+    # -------------------------------------------------------------------------
+    # One section per active civ: Generic first, then Greek/Egyptian/Norse/
+    # Atlantean.  Skips civs that are excluded from the seed.  Rebuilds the
+    # section skeleton on first call, then only rewrites item-row content on
+    # every subsequent update so layout is stable.
+    # -------------------------------------------------------------------------
+
+    _AGE_HEX   = ["737373", "33BF33", "4D8CFF", "BF4DFF"]
+    _AGE_NAMES = ["Archaic", "Classical", "Heroic", "Mythic"]
+
+    _CIV_HEADER_HEX = {
+        "Generic":   "FF4444",   # red
+        "Greek":     "4D4DFF",   # blue
+        "Egyptian":  "FFE033",   # yellow
+        "Norse":     "CC7070",   # rusty red
+        "Atlantean": "00FFFF",   # teal
+    }
+
+    def build_civs_tab(self) -> None:
+        """Lazy-build the Civilizations tab (called from update_civs_view)."""
+        if getattr(self, "_civs_tab", None) is not None:
+            return
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+        outer = BoxLayout(
+            orientation="vertical", size_hint_y=None,
+            spacing=dp(10), padding=(dp(8), dp(108), dp(8), dp(8)),
+        )
+        outer.bind(minimum_height=outer.setter("height"))
+        scroll.add_widget(outer)
+        try:
+            self.add_client_tab("Civilizations", scroll)
+        except Exception as ex:
+            logging.getLogger(__name__).warning(f"Could not add Civilizations tab: {ex}")
+            return
+        self._civs_tab   = scroll
+        self._civs_outer = outer
+        self._civ_section_widgets: dict = {}
+        self._civs_global_missing_lbl = None
+
+    def update_civs_view(
+        self,
+        received_ids: list,
+        excluded_civs,
+        random_major_gods: bool,
+    ) -> None:
+        """Refresh the Civilizations tab.
+
+        Args:
+            received_ids:      Full list of received AP item IDs (may have duplicates).
+            excluded_civs:     Civs absent from this seed (their sections are omitted).
+            random_major_gods: Whether Atlantean items exist in this seed.
+        """
+        def _update(dt):
+            from ..items.Items import (
+                aomItemData,
+                AgeUnlock,
+                UnitUnlockProgression, UnitUnlockUseful,
+                MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
+                AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful, AtlanteanMythUnitUnlock,
+                VillagerCarryCapacity,
+                StartingResources, StartingResourcesLarge,
+                PassiveIncome, PassiveIncomeLarge,
+                RelicTrickle, RelicEffect,
+                Reinforcement, ReinforcementUseful,
+                UnitStatBonus,
+                HeroStatBoost, HeroStatBoostFiller,
+                HeroSpecialEffect, HeroActionBoost,
+                ArkantosHousing,
+                GenericVillagerDiscount,
+                StartingEconomyTech, StartingMilitaryTech,
+                StartingDockTech, StartingBuildingsTech,
+                Victory, Campaign, FinalUnlock, Trap, Gem, ProgressiveShopInfo, ScenarioKey,
+            )
+            from collections import Counter
+
+            self.build_civs_tab()
+            if not hasattr(self, "_civs_outer"):
+                return
+
+            counts     = Counter(received_ids)
+            received_s = set(received_ids)
+
+            # --- Determine active civs -------------------------------------------
+            _CIV_ORDER  = ["Generic", "Greek", "Egyptian", "Norse", "Atlantean"]
+            active_civs = []
+            for _civ in _CIV_ORDER:
+                if _civ == "Atlantean" and not random_major_gods:
+                    continue
+                if _civ != "Generic" and _civ in excluded_civs:
+                    continue
+                active_civs.append(_civ)
+
+            # --- Item-type sets ---------------------------------------------------
+            _CIV_TYPES  = (
+                AgeUnlock,
+                UnitUnlockProgression, UnitUnlockUseful,
+                MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
+                AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful, AtlanteanMythUnitUnlock,
+                VillagerCarryCapacity,
+            )
+            # Types that are never counted as "in multiworld" items for display
+            _SKIP_TYPES = (Victory, Campaign, FinalUnlock, Trap, Gem, ProgressiveShopInfo, ScenarioKey)
+            # Unit/myth training unlocks — shown with checkmarks
+            _UNIT_TYPES = (UnitUnlockProgression, UnitUnlockUseful,
+                           AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful)
+            _MYTH_TYPES = (MythUnitUnlockProgression, MythUnitUnlockUseful,
+                           MythUnitUnlockFiller, AtlanteanMythUnitUnlock)
+            # Misc: civ-specific but not unit/myth/age — shown only when received
+            _MISC_TYPES = (VillagerCarryCapacity,)
+
+            def _item_culture(item):
+                t = item.type
+                if isinstance(t, _CIV_TYPES):
+                    c = getattr(t, "culture", None)
+                    if c:
+                        return c
+                    un = getattr(t, "unit_name", "")
+                    for _c in ("Greek", "Egyptian", "Norse", "Atlantean"):
+                        if _c in un:
+                            return _c
+                return None
+
+            def _is_generic(item):
+                return (
+                    not isinstance(item.type, _CIV_TYPES)
+                    and not isinstance(item.type, _SKIP_TYPES)
+                )
+
+            def _get_age_item(culture):
+                return next(
+                    (it for it in aomItemData
+                     if isinstance(it.type, AgeUnlock)
+                     and getattr(it.type, "culture", None) == culture),
+                    None,
+                )
+
+            def _civ_items_all(culture):
+                """All non-AgeUnlock items that belong to `culture`."""
+                return [
+                    it for it in aomItemData
+                    if not isinstance(it.type, AgeUnlock)
+                    and _item_culture(it) == culture
+                ]
+
+            def _generic_items_all():
+                return [it for it in aomItemData if _is_generic(it)]
+
+            def _age_markup(age_count):
+                """Four coloured age badges; past ages bright, future ages dim."""
+                parts = []
+                for i in range(4):
+                    name  = self._AGE_NAMES[i]
+                    hx    = self._AGE_HEX[i]
+                    if i <= age_count:
+                        parts.append(f"[b][color={hx}] {name} [/color][/b]")
+                    else:
+                        parts.append(f"[color=444444] {name} [/color]")
+                return "  ".join(parts)
+
+            # --- Compute global missing count (no traps, no skip types) ----------
+            # Count every non-skip, non-trap catalog item that belongs to an
+            # active civ (or is generic), then subtract what's been received.
+            all_countable = [
+                it for it in aomItemData
+                if not isinstance(it.type, _SKIP_TYPES)
+                and (
+                    _is_generic(it)
+                    or _item_culture(it) in active_civs
+                    or isinstance(it.type, AgeUnlock)
+                )
+            ]
+            global_in_seed  = len(all_countable)
+            global_received = sum(1 for it in all_countable if it.id in received_s)
+            global_missing  = global_in_seed - global_received
+
+            # --- Skeleton build (once per active-civ set) ----------------------
+            cached_civs = set(self._civ_section_widgets.keys())
+            if cached_civs != set(active_civs):
+                self._civs_outer.clear_widgets()
+                self._civ_section_widgets  = {}
+                self._civs_global_missing_lbl = None
+
+                # --- Global missing header (above Generic) ---
+                gml = Label(
+                    text="", markup=True, halign="left", valign="middle",
+                    size_hint_y=None, height=dp(41), font_size=dp(29),
+                )
+                gml.bind(size=gml.setter("text_size"))
+                self._civs_outer.add_widget(gml)
+                self._civs_global_missing_lbl = gml
+
+                for civ in active_civs:
+                    hdr_hex = self._CIV_HEADER_HEX.get(civ, "AAAAAA")
+
+                    section = BoxLayout(
+                        orientation="vertical", size_hint_y=None, spacing=dp(1),
+                    )
+                    section.bind(minimum_height=section.setter("height"))
+
+                    header = Label(
+                        text=f"[b][color={hdr_hex}]{civ}[/color][/b]",
+                        markup=True, halign="left", valign="middle",
+                        size_hint_y=None, height=dp(41), font_size=dp(29),
+                    )
+                    header.bind(size=header.setter("text_size"))
+                    section.add_widget(header)
+
+                    # Age progress row (civ sections only)
+                    age_lbl = None
+                    if civ != "Generic":
+                        age_lbl = Label(
+                            text="", markup=True, halign="left", valign="middle",
+                            size_hint_y=None, height=dp(29), font_size=dp(18),
+                        )
+                        age_lbl.bind(size=age_lbl.setter("text_size"))
+                        section.add_widget(age_lbl)
+
+                    # Item-rows container (cleared and rebuilt each update)
+                    items_box = BoxLayout(
+                        orientation="vertical", size_hint_y=None, spacing=dp(0),
+                    )
+                    items_box.bind(minimum_height=items_box.setter("height"))
+                    section.add_widget(items_box)
+
+                    # Thin decorative separator
+                    sep = Label(
+                        text="[color=252525]" + ("\u2500" * 80) + "[/color]",
+                        markup=True, halign="left", valign="middle",
+                        size_hint_y=None, height=dp(12), font_size=dp(10),
+                    )
+                    sep.bind(size=sep.setter("text_size"))
+                    section.add_widget(sep)
+
+                    self._civs_outer.add_widget(section)
+                    self._civ_section_widgets[civ] = {
+                        "section":   section,
+                        "age_lbl":   age_lbl,
+                        "items_box": items_box,
+                    }
+
+            # --- Update global missing label -------------------------------------
+            if self._civs_global_missing_lbl is not None:
+                if global_missing > 0:
+                    self._civs_global_missing_lbl.text = (
+                        f"[b][color=FF8844]{global_missing} items still in multiworld[/color][/b]"
+                    )
+                else:
+                    self._civs_global_missing_lbl.text = (
+                        "[b][color=44FF44]All items received![/color][/b]"
+                    )
+
+            # --- Per-update content refresh ------------------------------------
+            def _mkrow(text_markup, h=dp(23), fs=dp(16)):
+                lbl = Label(
+                    text=text_markup, markup=True,
+                    halign="left", valign="middle",
+                    size_hint_y=None, height=h, font_size=fs,
+                )
+                lbl.bind(size=lbl.setter("text_size"))
+                return lbl
+
+            def _subhdr(title, color="CCCCCC"):
+                return _mkrow(
+                    f"[b][color={color}]  {title}[/color][/b]",
+                    h=dp(26), fs=dp(17),
+                )
+
+            # Checkmark rows: green tick if received, dark red X if missing
+            # Missing item text is very dark (363636 ≈ 20 % darker than 444444)
+            def _itemrow(display_name, has_it):
+                col      = "DDFFDD" if has_it else "363636"
+                icon     = "\u2714" if has_it else "\u2718"
+                icon_col = "44FF44" if has_it else "5C1A1A"
+                return _mkrow(
+                    f"[color={icon_col}]    {icon}[/color] [color={col}]{display_name}[/color]"
+                )
+
+            for civ, refs in self._civ_section_widgets.items():
+                ib      = refs["items_box"]
+                age_ref = refs["age_lbl"]
+                ib.clear_widgets()
+
+                if civ == "Generic":
+                    # ---- Generic: received non-civ items grouped by category ----
+                    all_gen = _generic_items_all()
+                    _GEN_GROUPS = [
+                        ("Starting Resources",  (StartingResources, StartingResourcesLarge)),
+                        ("Passive Income",       (PassiveIncome, PassiveIncomeLarge)),
+                        ("Relic Trickles",       (RelicTrickle,)),
+                        ("Relic Effects",        (RelicEffect,)),
+                        ("Reinforcements",       (Reinforcement, ReinforcementUseful)),
+                        ("Unit Stat Bonuses",    (UnitStatBonus,)),
+                        ("Villager Discounts",   (GenericVillagerDiscount,)),
+                        ("Starting Techs",       (StartingEconomyTech, StartingMilitaryTech,
+                                                  StartingDockTech, StartingBuildingsTech)),
+                    ]
+                    for grp_name, grp_types in _GEN_GROUPS:
+                        grp = [
+                            (it, counts.get(it.id, 0)) for it in all_gen
+                            if isinstance(it.type, grp_types)
+                            and counts.get(it.id, 0) > 0
+                        ]
+                        if not grp:
+                            continue
+                        ib.add_widget(_subhdr(grp_name))
+                        for it, n in grp:
+                            sfx = f" [color=AAAAAA]x{n}[/color]" if n > 1 else ""
+                            ib.add_widget(
+                                _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]{sfx}")
+                            )
+
+                    # Hero Items: Arkantos first, then other heroes alphabetically.
+                    # No group sub-header; hero name acts as implicit separator.
+                    _HERO_TYPES = (HeroStatBoost, HeroStatBoostFiller,
+                                   HeroSpecialEffect, HeroActionBoost, ArkantosHousing)
+                    hero_items_all = [
+                        it for it in all_gen
+                        if isinstance(it.type, _HERO_TYPES)
+                    ]
+                    if hero_items_all:
+                        def _hero_name(it):
+                            if isinstance(it.type, ArkantosHousing):
+                                # Both Arkantos and Kastor reuse ArkantosHousing;
+                                # distinguish by item name prefix.
+                                return "Kastor" if it.item_name.startswith("Kastor") else "Arkantos"
+                            h = getattr(it.type, "hero", "") or ""
+                            return h[:-3] if h.endswith("SPC") else h
+                        def _hero_sort_key(it):
+                            h = _hero_name(it)
+                            return (0, it.item_name) if h == "Arkantos" else (1, h, it.item_name)
+                        hero_items_all.sort(key=_hero_sort_key)
+                        ib.add_widget(_subhdr("Hero Items"))
+                        for it in hero_items_all:
+                            if counts.get(it.id, 0) == 0:
+                                continue
+                            ib.add_widget(
+                                _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]")
+                            )
+
+                else:
+                    # ---- Civ section: age bar, unit unlocks, myth unlocks, misc --
+                    age_item  = _get_age_item(civ)
+                    age_count = counts.get(age_item.id, 0) if age_item else 0
+                    if age_ref is not None:
+                        age_ref.text = "  " + _age_markup(min(age_count, 3))
+
+                    all_civ = _civ_items_all(civ)
+
+                    # Unit Unlocks — checkmark rows (show all, dim if missing)
+                    unit_items = [
+                        (it, counts.get(it.id, 0)) for it in all_civ
+                        if isinstance(it.type, _UNIT_TYPES)
+                    ]
+                    if unit_items:
+                        ib.add_widget(_subhdr("Unit Unlocks"))
+                        for it, n in unit_items:
+                            ib.add_widget(_itemrow(it.item_name, n > 0))
+
+                    # Myth Units: each age tier is a single checkmark row (no sub-bullets)
+                    for age_name, age_hex in zip(
+                        ["Classical", "Heroic", "Mythic"],
+                        [self._AGE_HEX[1], self._AGE_HEX[2], self._AGE_HEX[3]],
+                    ):
+                        myth_age = [
+                            (it, counts.get(it.id, 0)) for it in all_civ
+                            if isinstance(it.type, _MYTH_TYPES)
+                            and getattr(it.type, "age", None) == age_name
+                        ]
+                        if not myth_age:
+                            continue
+                        any_received = any(n > 0 for _, n in myth_age)
+                        _myth_lbl_col = self._CIV_HEADER_HEX.get(civ, "CCCCCC") if any_received else "363636"
+                        _myth_icon    = "\u2714" if any_received else "\u2718"
+                        _myth_icon_col = "44FF44" if any_received else "5C1A1A"
+                        ib.add_widget(_mkrow(
+                            f"[color={_myth_icon_col}]    {_myth_icon}[/color]"
+                            f" [color={_myth_lbl_col}]{age_name} Myth Units[/color]"
+                        ))
+
+                    # Misc — civ-specific items that aren't unit/myth unlocks.
+                    # Only show received items; omit the section entirely if none.
+                    misc_received = [
+                        it for it in all_civ
+                        if isinstance(it.type, _MISC_TYPES)
+                        and counts.get(it.id, 0) > 0
+                    ]
+                    if misc_received:
+                        ib.add_widget(_subhdr("Misc"))
+                        for it in misc_received:
+                            ib.add_widget(
+                                _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]")
+                            )
+
+        Clock.schedule_once(_update)
+
+    # -------------------------------------------------------------------------
+    # Relics Tab
+    # -------------------------------------------------------------------------
+
+    _RELIC_CAMPAIGN_HEX: dict = {
+        "FOTT_GREEK":    "4D4DFF",
+        "FOTT_EGYPTIAN": "FFFF00",
+        "FOTT_NORSE":    "CC7070",
+        "FOTT_FINAL":    "FF2222",
+        "GOLDEN_GIFT":   "DAA520",
+        "NEW_ATLANTIS":  "00FFFF",
+    }
+
+    def build_relics_tab(self) -> None:
+        """Eagerly build the Relics tab.  Always called from on_start() so the
+        tab exists in the nav bar from launch.  Content is populated by
+        update_relics_view() once slot_data is received.  If relicsanity is
+        disabled in the seed a placeholder message is shown instead."""
+        if getattr(self, "_relics_tab", None) is not None:
+            return
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+        outer = BoxLayout(
+            orientation="vertical", size_hint_y=None,
+            spacing=dp(6), padding=(dp(8), dp(108), dp(8), dp(8)),
+        )
+        outer.bind(minimum_height=outer.setter("height"))
+        # Placeholder shown before slot_data arrives or when relicsanity is off
+        placeholder = Label(
+            text="[color=666666]Relicsanity is not enabled for this seed.[/color]",
+            markup=True, halign="left", valign="top",
+            size_hint_y=None, height=dp(40), font_size=dp(18),
+        )
+        placeholder.bind(size=placeholder.setter("text_size"))
+        outer.add_widget(placeholder)
+        scroll.add_widget(outer)
+        try:
+            self.add_client_tab("Relics", scroll)
+        except Exception as ex:
+            logging.getLogger(__name__).warning(f"Could not add Relics tab: {ex}")
+            return
+        self._relics_tab         = scroll
+        self._relics_outer       = outer
+        self._relics_placeholder = placeholder
+        # loc_id -> Label widget so we can update only the text on refresh
+        self._relic_row_widgets: dict = {}
+        self._relics_built = False
+
+    def update_relics_view(
+        self,
+        relicsanity: bool,
+        checked_locs: set,
+        disabled_campaign_ids: set,
+    ) -> None:
+        """Refresh the Relics tab.
+
+        Only builds the tab when relicsanity is True.  Safe to call every
+        update; on first call it constructs the full skeleton, on subsequent
+        calls it only updates the checkmark state of each row.
+
+        Args:
+            relicsanity:           Whether the relicsanity option is on.
+            checked_locs:          Set of location IDs the player has checked.
+            disabled_campaign_ids: Campaign IDs excluded from this seed.
+        """
+        def _update(dt):
+            # When relicsanity is off keep the placeholder; do nothing else.
+            if not relicsanity:
+                return
+            # Relicsanity is on: hide the placeholder if it is still there.
+            if hasattr(self, "_relics_placeholder") and self._relics_placeholder.parent:
+                self._relics_outer.remove_widget(self._relics_placeholder)
+
+            from ..locations.Locations import (
+                aomLocationData, aomLocationType, SCENARIO_TO_LOCATIONS,
+            )
+            from ..locations.Scenarios import aomScenarioData
+            from ..locations.Campaigns import aomCampaignData
+
+            self.build_relics_tab()
+            if not hasattr(self, "_relics_outer"):
+                return
+
+            # ---- Build skeleton once ----------------------------------------
+            if not self._relics_built:
+                self._relics_built = True
+                self._relic_row_widgets = {}
+                self._relics_outer.clear_widgets()
+
+                # Collect all RELIC locations, grouped by campaign then scenario.
+                # Preserve the natural enum order throughout.
+                by_campaign: dict = {}
+                for scenario, locs in SCENARIO_TO_LOCATIONS.items():
+                    relic_locs = [l for l in locs if l.type == aomLocationType.RELIC]
+                    if not relic_locs:
+                        continue
+                    campaign = scenario.campaign
+                    by_campaign.setdefault(campaign, []).append((scenario, relic_locs))
+
+                for campaign, scenario_groups in by_campaign.items():
+                    if campaign.id in disabled_campaign_ids:
+                        continue
+
+                    camp_hex = self._RELIC_CAMPAIGN_HEX.get(campaign.name, "AAAAAA")
+
+                    # Campaign header
+                    camp_lbl = Label(
+                        text=f"[b][color={camp_hex}]{campaign.campaign_name}[/color][/b]",
+                        markup=True, halign="left", valign="middle",
+                        size_hint_y=None, height=dp(41), font_size=dp(29),
+                    )
+                    camp_lbl.bind(size=camp_lbl.setter("text_size"))
+                    self._relics_outer.add_widget(camp_lbl)
+
+                    for scenario, relic_locs in scenario_groups:
+                        # Scenario sub-header
+                        scen_lbl = Label(
+                            text=f"[b][color=CCCCCC]  {scenario.display_name}[/color][/b]",
+                            markup=True, halign="left", valign="middle",
+                            size_hint_y=None, height=dp(26), font_size=dp(17),
+                        )
+                        scen_lbl.bind(size=scen_lbl.setter("text_size"))
+                        self._relics_outer.add_widget(scen_lbl)
+
+                        for loc in relic_locs:
+                            row_lbl = Label(
+                                text="", markup=True,
+                                halign="left", valign="middle",
+                                size_hint_y=None, height=dp(23), font_size=dp(16),
+                            )
+                            row_lbl.bind(size=row_lbl.setter("text_size"))
+                            self._relics_outer.add_widget(row_lbl)
+                            self._relic_row_widgets[loc.id] = (row_lbl, loc.location_name)
+
+                        # Thin separator after each scenario block
+                        sep = Label(
+                            text="[color=252525]" + ("\u2500" * 80) + "[/color]",
+                            markup=True, halign="left", valign="middle",
+                            size_hint_y=None, height=dp(10), font_size=dp(9),
+                        )
+                        sep.bind(size=sep.setter("text_size"))
+                        self._relics_outer.add_widget(sep)
+
+            # ---- Update checkmark state on every call -----------------------
+            for loc_id, (row_lbl, loc_name) in self._relic_row_widgets.items():
+                checked  = loc_id in checked_locs
+                icon     = "\u2714" if checked else "\u2718"
+                icon_col = "336633" if checked else "CCCCCC"
+                txt_col  = "363636" if checked else "EEEEEE"
+                row_lbl.text = (
+                    f"[color={icon_col}]    {icon}[/color]"
+                    f" [color={txt_col}]{loc_name}[/color]"
+                )
+
+        Clock.schedule_once(_update)
+
     def on_start(self) -> None:
         logging.getLogger(__name__).addHandler(LogtoUI(self.log_panels["All"].on_log))
         logger = logging.getLogger("Client")
         logger.info("Age of Mythology: Retold client commands:")
         logger.info("  /status              - show connection info and Atlantis Key progress")
         logger.info("  /scenarios (/progress) - list beaten, in-progress, and untouched scenarios")
+        # Build all custom tabs eagerly on startup so they always appear in the
+        # nav bar.  add_client_tab must be called from the main Kivy thread
+        # before the MDNavigationBar layout finalises; calling it mid-session
+        # from inside Clock.schedule_once is not guaranteed to work in every
+        # version of KivyMD.  Tabs whose data depends on slot_data will show a
+        # placeholder until the first update call populates them.
+        self.build_scenarios_tab()
+        self.build_civs_tab()
+        self.build_relics_tab()
 
     @staticmethod
     def start_ap_ui(ctx: "AoMContext") -> None:

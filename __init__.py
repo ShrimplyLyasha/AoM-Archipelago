@@ -1562,6 +1562,7 @@ class aomWorld(World):
             "update_buildings_for_random_god": bool(self.options.update_buildings_for_random_god.value),
             "gem_shop":       self.gem_shop_enabled,
             "relicsanity":    self.relicsanity_enabled,
+            "excluded_civs":  sorted(self.excluded_civs),
         }
         if self.options.random_major_gods:
             data["god_assignments"] = self.god_assignments

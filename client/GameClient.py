@@ -683,6 +683,11 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     def _xs(s): lines.append(s)
     def _cls_rank(c): return {"trap":-1,"filler":0,"useful":1,"progression":2}.get(c,-1)
     def _cls_disp(c): return {"trap":"Trap","filler":"Filler","useful":"Useful","progression":"Advancement"}.get(c,"?")
+    def _sanitize_xs_str(s):
+        """Transliterate non-ASCII characters to their closest ASCII equivalent.
+        XS string literals only support ASCII; accented/special chars cause token errors."""
+        import unicodedata
+        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
 
     _xs("")
     _xs("void APShopStateInit()")
@@ -718,14 +723,14 @@ def write_aom_state(ctx: AoMGameContext) -> None:
             _lbl = str(_n) + " items\\n" + _top + " is rarest\\n?: main recipient"
         elif info_level == 3:
             _top = _cls_disp(max((_d.get("classification","filler") for _d in _det), key=_cls_rank))
-            _pl  = _main_recipient(_det)
+            _pl  = _sanitize_xs_str(_main_recipient(_det))
             _lbl = str(_n) + " items\\n" + _top + " is rarest\\n" + _pl + ": main recipient"
         else:
             # Level 4: show count of rarest item type
             _top     = max((_d.get("classification","filler") for _d in _det), key=_cls_rank)
             _top_disp = _cls_disp(_top)
             _top_cnt = sum(1 for _d in _det if _d.get("classification","filler") == _top)
-            _pl      = _main_recipient(_det)
+            _pl      = _sanitize_xs_str(_main_recipient(_det))
             _lbl = (str(_n) + " items\\n" + _top_disp + " is rarest\\n\\n"
                     + str(_top_cnt) + " " + _top_disp + " items\\n" + _pl + ": main recipient")
         _lbl = _lbl.replace('"', '\\\\"'  )

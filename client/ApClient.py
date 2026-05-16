@@ -360,9 +360,12 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
         from ..locations.Scenarios import aomScenarioData
         for scenario in aomScenarioData:
             locations = SCENARIO_TO_LOCATIONS.get(scenario, [])
-            # Count OBJECTIVE and VICTORY locations (actual checks)
-            total_checks = len([l for l in locations if l.type in (aomLocationType.OBJECTIVE, aomLocationType.VICTORY)])
-            found_checks = len([l for l in locations if l.type in (aomLocationType.OBJECTIVE, aomLocationType.VICTORY) and l.id in ctx.game_ctx.sent_checks])
+            # Count OBJECTIVE, VICTORY, and (when relicsanity is on) RELIC locations.
+            _check_types = (aomLocationType.OBJECTIVE, aomLocationType.VICTORY)
+            if getattr(ctx.game_ctx, "relicsanity_enabled", False):
+                _check_types = (aomLocationType.OBJECTIVE, aomLocationType.VICTORY, aomLocationType.RELIC)
+            total_checks = len([l for l in locations if l.type in _check_types])
+            found_checks = len([l for l in locations if l.type in _check_types and l.id in ctx.game_ctx.sent_checks])
             if total_checks > 0:
                 scenario_check_counts[scenario.global_number] = (found_checks, total_checks)
         
@@ -370,6 +373,26 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             usos, scenario_to_key_id, bundle_display_names,
             held_keys, campaign_unlocked_by_id, disabled_ids,
             scenario_to_god, scenario_check_counts,
+        )
+
+    if hasattr(ctx.ui, "update_civs_view"):
+        excluded_civs = getattr(ctx, "_excluded_civs", frozenset())
+        random_major_gods = getattr(ctx.game_ctx, "random_major_gods", False)
+        received_ids = list(ctx.game_ctx.received_items)
+        ctx.ui.update_civs_view(
+            received_ids=received_ids,
+            excluded_civs=excluded_civs,
+            random_major_gods=random_major_gods,
+        )
+
+    if hasattr(ctx.ui, "update_relics_view"):
+        relicsanity = getattr(ctx.game_ctx, "relicsanity_enabled", False)
+        checked_locs = set(getattr(ctx.game_ctx, "sent_checks", set()))
+        disabled_ids = set(getattr(ctx, "_disabled_campaign_ids", set()))
+        ctx.ui.update_relics_view(
+            relicsanity=relicsanity,
+            checked_locs=checked_locs,
+            disabled_campaign_ids=disabled_ids,
         )
 
 
@@ -1196,6 +1219,7 @@ class AoMContext(CommonContext):
         self.game_ctx.gem_shop_enabled      = bool(slot_data.get("gem_shop", True))
         self.game_ctx.relicsanity_enabled   = bool(slot_data.get("relicsanity", False))
         self.game_ctx.wins_to_open_shop     = int(slot_data.get("wins_to_open_shop", 4))
+        self._excluded_civs: frozenset[str] = frozenset(slot_data.get("excluded_civs", []))
         self._disabled_campaign_ids: set[int] = set(slot_data.get("disabled_campaigns", []))
         self.game_ctx.shop_obelisk_assignments = slot_data.get("shop_obelisk_assignments", {})
         self.game_ctx.shop_item_details     = {int(k): v for k, v in slot_data.get("shop_item_details", {}).items()}
