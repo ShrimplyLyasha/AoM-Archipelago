@@ -297,7 +297,8 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             gems_spent  = len(ctx.game_ctx.purchased_slots)
             gems_avail  = max(0, gems_earned - gems_spent)
             threshold   = ctx.game_ctx.wins_to_open_shop
-            beaten      = len(ctx.game_ctx.sent_checks & VICTORY_LOCATION_IDS)
+            beaten      = len((ctx.game_ctx.sent_checks | ctx.game_ctx.server_known_checks)
+                              & VICTORY_LOCATION_IDS)
             if threshold == 0:
                 shops_open = 4
             else:
@@ -355,6 +356,8 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
                 scenario_to_god[scenario_id] = god_names[god_id]
         
         # Build scenario_check_counts mapping
+        # _display_checks = locally sent + server-confirmed (covers released/force-checked locs)
+        _display_checks = ctx.game_ctx.sent_checks | ctx.game_ctx.server_known_checks
         scenario_check_counts = {}
         from ..locations.Locations import SCENARIO_TO_LOCATIONS, aomLocationType
         from ..locations.Scenarios import aomScenarioData
@@ -365,7 +368,8 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             if getattr(ctx.game_ctx, "relicsanity_enabled", False):
                 _check_types = (aomLocationType.OBJECTIVE, aomLocationType.VICTORY, aomLocationType.RELIC)
             total_checks = len([l for l in locations if l.type in _check_types])
-            found_checks = len([l for l in locations if l.type in _check_types and l.id in ctx.game_ctx.sent_checks])
+            found_checks = len([l for l in locations if l.type in _check_types
+                                and l.id in _display_checks])
             if total_checks > 0:
                 scenario_check_counts[scenario.global_number] = (found_checks, total_checks)
         
@@ -387,7 +391,8 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
 
     if hasattr(ctx.ui, "update_relics_view"):
         relicsanity = getattr(ctx.game_ctx, "relicsanity_enabled", False)
-        checked_locs = set(getattr(ctx.game_ctx, "sent_checks", set()))
+        checked_locs = (getattr(ctx.game_ctx, "sent_checks", set())
+                        | getattr(ctx.game_ctx, "server_known_checks", set()))
         disabled_ids = set(getattr(ctx, "_disabled_campaign_ids", set()))
         ctx.ui.update_relics_view(
             relicsanity=relicsanity,
@@ -434,7 +439,8 @@ class AoMCommandProcessor(ClientCommandProcessor):
         from ..items.Items import aomItemData
 
         ctx = self.ctx
-        sent     = ctx.game_ctx.sent_checks
+        # Union of locally-sent and server-confirmed covers force-released locations.
+        sent     = ctx.game_ctx.sent_checks | ctx.game_ctx.server_known_checks
         received = set(ctx.game_ctx.received_items)
 
         # Build per-scenario stats

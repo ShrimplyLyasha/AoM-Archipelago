@@ -432,7 +432,7 @@ class AoMManager(GameManager):
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
         outer = BoxLayout(
             orientation="vertical", size_hint_y=None,
-            spacing=dp(10), padding=(dp(8), dp(108), dp(8), dp(8)),
+            spacing=dp(10), padding=(dp(8), dp(8), dp(8), dp(8)),
         )
         outer.bind(minimum_height=outer.setter("height"))
         scroll.add_widget(outer)
@@ -761,9 +761,20 @@ class AoMManager(GameManager):
                         if isinstance(it.type, _UNIT_TYPES)
                     ]
                     if unit_items:
-                        ib.add_widget(_subhdr("Unit Unlocks"))
+                        ib.add_widget(_subhdr("Can Train"))
                         for it, n in unit_items:
-                            ib.add_widget(_itemrow(it.item_name, n > 0))
+                            _uname = it.item_name
+                            if _uname.lower().startswith("can train "):
+                                _uname = _uname[len("can train "):]
+                            _has_u = n > 0
+                            if _has_u:
+                                ib.add_widget(_mkrow(
+                                    f"[color=44FF44]    \u2714[/color] [b][color=DDFFDD]{_uname}[/color][/b]"
+                                ))
+                            else:
+                                ib.add_widget(_mkrow(
+                                    f"        [color=363636]{_uname}[/color]"
+                                ))
 
                     # Myth Units: each age tier is a single checkmark row (no sub-bullets)
                     for age_name, age_hex in zip(
@@ -779,12 +790,15 @@ class AoMManager(GameManager):
                             continue
                         any_received = any(n > 0 for _, n in myth_age)
                         _myth_lbl_col = self._CIV_HEADER_HEX.get(civ, "CCCCCC") if any_received else "363636"
-                        _myth_icon    = "\u2714" if any_received else "\u2718"
-                        _myth_icon_col = "44FF44" if any_received else "5C1A1A"
-                        ib.add_widget(_mkrow(
-                            f"[color={_myth_icon_col}]    {_myth_icon}[/color]"
-                            f" [color={_myth_lbl_col}]{age_name} Myth Units[/color]"
-                        ))
+                        if any_received:
+                            ib.add_widget(_mkrow(
+                                f"[color=44FF44]    \u2714[/color]"
+                                f" [b][color={_myth_lbl_col}]{age_name} Myth Units[/color][/b]"
+                            ))
+                        else:
+                            ib.add_widget(_mkrow(
+                                f"        [color={_myth_lbl_col}]{age_name} Myth Units[/color]"
+                            ))
 
                     # Misc — civ-specific items that aren't unit/myth unlocks.
                     # Only show received items; omit the section entirely if none.
@@ -825,7 +839,7 @@ class AoMManager(GameManager):
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
         outer = BoxLayout(
             orientation="vertical", size_hint_y=None,
-            spacing=dp(6), padding=(dp(8), dp(108), dp(8), dp(8)),
+            spacing=dp(6), padding=(dp(8), dp(8), dp(8), dp(8)),
         )
         outer.bind(minimum_height=outer.setter("height"))
         # Placeholder shown before slot_data arrives or when relicsanity is off
@@ -947,13 +961,17 @@ class AoMManager(GameManager):
             # ---- Update checkmark state on every call -----------------------
             for loc_id, (row_lbl, loc_name) in self._relic_row_widgets.items():
                 checked  = loc_id in checked_locs
-                icon     = "\u2714" if checked else "\u2718"
-                icon_col = "336633" if checked else "CCCCCC"
-                txt_col  = "363636" if checked else "EEEEEE"
-                row_lbl.text = (
-                    f"[color={icon_col}]    {icon}[/color]"
-                    f" [color={txt_col}]{loc_name}[/color]"
-                )
+                if checked:
+                    # Collected: dim green tick, dark text
+                    row_lbl.text = (
+                        f"[color=336633]    \u2714[/color]"
+                        f" [color=363636]{loc_name}[/color]"
+                    )
+                else:
+                    # Uncollected: blank indent, bold bright text, no X
+                    row_lbl.text = (
+                        f"        [b][color=EEEEEE]{loc_name}[/color][/b]"
+                    )
 
         Clock.schedule_once(_update)
 

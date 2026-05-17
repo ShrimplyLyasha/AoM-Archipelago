@@ -1563,6 +1563,14 @@ void APShowQueuedCheckMessage(int id = 0)
         return;
     }
 
+    // Suppress message if this location was already checked before this
+    // play session (e.g. replaying a completed mission, or locations
+    // force-released by another player completing their game).
+    if (APIsAlreadyChecked(id))
+    {
+        return;
+    }
+
     string objectiveText = APGetCheckText(id);
 
     if (objectiveText == "Scenario Victory")
@@ -2387,6 +2395,7 @@ runImmediately
         APTrapScheduleNext(true);
     }
     APRelicCounterInit();
+    APInitSentChecks();
     trMusicPlayCurrent();
     xsDisableSelf();
 }

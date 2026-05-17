@@ -888,6 +888,38 @@ def write_aom_state(ctx: AoMGameContext) -> None:
             _xs( "    }")
     _xs("}")
 
+    # ----------------------------------------------------------------
+    # APInitSentChecks / APIsAlreadyChecked
+    # Writes the union of sent_checks | server_known_checks into XS so
+    # APShowQueuedCheckMessage can suppress messages for already-checked
+    # locations (e.g. replaying a mission, or force-released checks).
+    # ----------------------------------------------------------------
+    _already_checked = sorted(ctx.sent_checks | ctx.server_known_checks)
+    _ac_count = len(_already_checked)
+    _ac_size  = max(_ac_count, 1)
+    _xs("")
+    _xs(f"extern int   gAPSentCheckCount = 0;")
+    _xs(f"extern int[] gAPSentChecks     = default;")
+    _xs("")
+    _xs("void APInitSentChecks()")
+    _xs("{")
+    _xs(f"    gAPSentCheckCount = {_ac_count};")
+    _xs(f"    gAPSentChecks = new int({_ac_size}, 0);")
+    for _aci, _acid in enumerate(_already_checked):
+        _xs(f"    gAPSentChecks[{_aci}] = {_acid};")
+    _xs("}")
+    _xs("")
+    _xs("bool APIsAlreadyChecked(int id = 0)")
+    _xs("{")
+    _xs("    int _i = 0;")
+    _xs("    while (_i < gAPSentCheckCount)")
+    _xs("    {")
+    _xs("        if (gAPSentChecks[_i] == id) { return (true); }")
+    _xs("        _i++;")
+    _xs("    }")
+    _xs("    return (false);")
+    _xs("}")
+
     content = "\n".join(lines) + "\n"
 
     try:
