@@ -169,13 +169,13 @@ class WinsToOpenShop(Range):
 
 class MaxAdvancementItemsInEachShop(Range):
     """
-    Maximum number of advancement items allowed in each non-Marsh shop (Desert, Grass, Hades).
+    Maximum number of advancement items allowed in each non-Marsh gem shop.
+    Leave 0 to forbid advancement items in shops entirely (recommended). Set to 15 to allow every slot in those 3 shops to hold any item. For first time playing, leaving this at 0 is recommended.
 
-    The Marsh shop never contains advancement items regardless of this setting. Its 15 slots are always restricted to trap/filler/useful. This option only affects how many slots in each of the other 3 shops are *unrestricted* and may receive an advancement item.
+    Careful setting this too high as you can't grind gems. If you spend your gems unwisely, you could softlock the seed. (You can cheat with ATM OF EREBUS to give yourself gems in the shop)
+    
+    The Marsh shop never contains advancement items regardless of this setting.
 
-    Set to 0 to forbid advancement items in shops entirely. Set to 15 to allow every slot in those 3 shops to hold any item.
-
-    Careful setting this too high as you can't grind gems. If you spend your gems unwisely, you could softlock the seed.
     """
     internal_name = "max_advancement_items_in_each_shop"
     display_name  = "Max Advancement Items In Each Shop"
@@ -366,10 +366,10 @@ When disabled, all 4 Golden Gift scenarios are removed from the pool."""
 class UnlockSetsOfScenarios(Range):
     """If you set this to more than 0, individual scenarios are locked behind Scenario Key items in addition to the campaign unlock items. Each Scenario Key unlocks a randomly-sized BUNDLE of scenarios (possibly across multiple active campaigns).
 
-The maximum bundle size equals this value but can be smaller too.
-Set to 1 for exactly one key per scenario; set higher for fewer-but-larger bundles.
+The maximum bundle size equals this value (but can be smaller).
+Set to 1 for exactly one key per scenario; set higher for fewer keys that unlock larger bundles.
 
-You'll start with 1 bundle of scenarios from your starting campaign. You'll always be able to complete at least 1 scenario in your starting bundle immediately.
+You'll start with 1 bundle of scenarios from your starting campaign.
 0 disables the feature entirely."""
     internal_name = "unlock_sets_of_scenarios"
     display_name  = "Unlock Sets of Scenarios"
