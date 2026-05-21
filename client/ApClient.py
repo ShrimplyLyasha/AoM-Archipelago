@@ -56,6 +56,7 @@ from typing import Optional
 import Utils
 import tkinter
 import tkinter.filedialog
+import tkinter.messagebox
 from CommonClient import ClientCommandProcessor, CommonContext, get_base_parser, server_loop
 from NetUtils import ClientStatus, NetworkItem
 
@@ -211,6 +212,81 @@ def _save_user_folder(folder: str) -> None:
             json.dump({"user_folder": folder}, f, indent=2)
     except Exception as e:
         print(f"Warning: could not save config: {e}")
+
+
+# Subdirectories AoMR creates inside every per-user (Steam-ID) folder.
+# Used to recognise a valid user folder and to reject common wrong picks
+# (the parent folder, the game install directory, etc.).
+_AOMR_MARKER_DIRS = ("config", "Data", "Game", "mods", "scenario")
+
+
+def _looks_like_aomr_folder(folder: str) -> bool:
+    """True if `folder` exists and looks like an AoMR per-user folder — i.e.
+    it contains the subdirectories AoMR creates (config, Data, Game, ...).
+    The "temp" folder AoMR keeps alongside the real per-user folders is
+    excluded — it also has those subdirs but is never the right pick."""
+    if not folder:
+        return False
+    p = Path(folder)
+    if not p.is_dir():
+        return False
+    if p.name.lower() == "temp":
+        return False
+    return any((p / d).is_dir() for d in _AOMR_MARKER_DIRS)
+
+
+def _aomr_base_dir() -> Path:
+    """Standard location AoMR creates per-Steam-ID user folders under:
+    %USERPROFILE%\\Games\\Age of Mythology Retold."""
+    return Path(os.path.expanduser("~")) / "Games" / "Age of Mythology Retold"
+
+
+def _scan_aomr_user_folders(base: Path) -> list:
+    """Return every immediate subfolder of `base` that looks like an AoMR
+    per-user folder.  Used both for auto-detection and for guiding the user
+    when they accidentally pick the parent folder."""
+    found: list = []
+    try:
+        if base.is_dir():
+            for child in sorted(base.iterdir()):
+                if child.is_dir() and _looks_like_aomr_folder(str(child)):
+                    found.append(str(child).replace("/", "\\"))
+    except Exception:
+        pass
+    return found
+
+
+def _autodetect_user_folders() -> list:
+    """Auto-detect AoMR user folders at the standard base path.  Normally
+    returns exactly one (the player's Steam-ID folder); empty if AoMR user
+    data is absent (game never run, or installed to a non-standard path)."""
+    candidates = _scan_aomr_user_folders(_aomr_base_dir())
+    # The real per-user folder is named with the numeric Steam ID.  When any
+    # numeric-named folder exists, restrict to those so detection is not
+    # derailed by other siblings the game may create next to it.
+    numeric = [c for c in candidates if Path(c).name.isdigit()]
+    if numeric:
+        return numeric
+    return candidates
+
+
+def _confirm_detected_folder(folder: str) -> bool:
+    """Ask the player to confirm an auto-detected user folder before using it."""
+    root = tkinter.Tk()
+    root.withdraw()
+    root.wm_attributes("-topmost", True)
+    try:
+        root.iconbitmap(str(_ICON_PATH))
+    except Exception:
+        pass  # icon is optional
+    try:
+        return bool(tkinter.messagebox.askyesno(
+            "AoMR user folder found",
+            "Found your Age of Mythology: Retold user folder:\n\n"
+            f"{folder}\n\nUse this folder?",
+        ))
+    finally:
+        root.destroy()
 
 
 def _resolve_mods_local_dir(user_folder: str) -> Path:
@@ -1103,29 +1179,83 @@ class AoMContext(CommonContext):
 
     @staticmethod
     def _prompt_for_folder() -> str:
-        """Open a folder picker dialog and save the result to host.yaml."""
-        root = tkinter.Tk()
-        root.withdraw()
-        root.wm_attributes("-topmost", True)
+        """Open a folder picker for the AoMR user folder and validate it.
+
+        Opens the dialog at the standard AoMR base path when it exists, and
+        re-prompts with an explanatory message if the chosen folder is not an
+        AoMR per-user folder (e.g. the player picked the parent folder or the
+        game install directory).  Returns "" if the player cancels."""
+        base = _aomr_base_dir()
+        initial_dir = str(base) if base.is_dir() else os.path.expanduser("~")
+
+        # One-time info popup before the picker — the file dialog's title bar
+        # truncates, so the full instructions go here.
+        info_root = tkinter.Tk()
+        info_root.withdraw()
+        info_root.wm_attributes("-topmost", True)
         try:
-            root.iconbitmap(str(_ICON_PATH))
+            info_root.iconbitmap(str(_ICON_PATH))
         except Exception:
-            pass  # icon is optional; don't block folder selection if missing
-        folder = tkinter.filedialog.askdirectory(
-            title="Select your AoMR user folder (the folder with your Steam ID)",
-            mustexist=True,
-        )
-        root.destroy()
+            pass  # icon is optional
+        try:
+            tkinter.messagebox.showinfo(
+                "Select your AoMR folder",
+                "Next, pick your Age of Mythology: Retold user folder.\n\n"
+                "It is the folder named with a big number (your Steam ID), "
+                "usually here:\n\n"
+                "C:\\Users\\[YourName]\\Games\\Age of Mythology Retold\\[SteamID]\n\n"
+                "It contains these subfolders as well as others:\n"
+                "config, Data, Game, mods, scenario, (and more)",
+            )
+        finally:
+            info_root.destroy()
 
-        if not folder:
-            return ""
+        while True:
+            root = tkinter.Tk()
+            root.withdraw()
+            root.wm_attributes("-topmost", True)
+            try:
+                root.iconbitmap(str(_ICON_PATH))
+            except Exception:
+                pass  # icon is optional; don't block folder selection if missing
 
-        # Normalize path separators
-        folder = str(folder).replace("/", "\\")
+            folder = tkinter.filedialog.askdirectory(
+                title=("Select your AoMR folder with the big number. It's probably here: "
+                       "C:\\Users\\[YourName]\\Games\\Age of Mythology Retold\\[SteamID]"),
+                initialdir=initial_dir,
+                mustexist=True,
+            )
 
-        _save_user_folder(folder)
+            if not folder:
+                root.destroy()
+                return ""
 
-        return folder
+            # Normalize path separators
+            folder = str(folder).replace("/", "\\")
+
+            if _looks_like_aomr_folder(folder):
+                root.destroy()
+                _save_user_folder(folder)
+                return folder
+
+            # Wrong pick — guide the player.  If they selected the parent
+            # folder, point them at the Steam-ID subfolder inside it.
+            children = _scan_aomr_user_folders(Path(folder))
+            if children:
+                hint = ("\n\nThat looks like the parent folder. Open it and "
+                        "select the subfolder named with your Steam ID:\n\n"
+                        f"{children[0]}")
+            else:
+                hint = ("\n\nThe correct folder is usually:\n\n"
+                        f"{base}\\<your Steam ID>\n\n"
+                        "It contains these subfolders as well as others:\n"
+                        "config, Data, Game, mods, scenario, (and more)")
+            tkinter.messagebox.showwarning(
+                "Not an AoMR user folder",
+                "That folder doesn't look like an Age of Mythology: Retold "
+                "user folder." + hint,
+            )
+            root.destroy()
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -1473,10 +1603,16 @@ def main(
     """
     Utils.init_logging("Age Of Mythology Retold Client")
 
-    # Prompt for folder before starting the async loop
+    # Resolve the AoMR user folder before starting the async loop.
+    # Order: saved value -> auto-detect (confirmed) -> manual folder picker.
     user_folder = _load_user_folder()
     if not user_folder:
-        user_folder = AoMContext._prompt_for_folder()
+        detected = _autodetect_user_folders()
+        if len(detected) == 1 and _confirm_detected_folder(detected[0]):
+            user_folder = detected[0]
+            _save_user_folder(user_folder)
+        else:
+            user_folder = AoMContext._prompt_for_folder()
 
     async def _main(
         connect: Optional[str],

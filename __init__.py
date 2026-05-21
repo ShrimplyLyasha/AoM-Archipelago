@@ -6,7 +6,6 @@
 #
 # Entry point for the AoMR Archipelago world.  Defines:
 #   * aomWorld   — the Archipelago World subclass (item pool, regions, rules)
-#   * AoMSettings— per-user host settings (game install path)
 #   * aomWebWorld— web template / YAML option grouping for the website
 #   * Vanilla data tables — _VANILLA_GODS, _MINOR_GOD_TECHS, _AGE_BASE_TECHS,
 #                            _SCENARIO_STARTING_AGE, _VANILLA_MINOR_GOD_TECHS,
@@ -137,9 +136,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, ClassVar, Mapping
+from typing import Any, Mapping
 
-import settings
 from BaseClasses import Item, ItemClassification
 try:
     from Options import OptionGroup
@@ -180,14 +178,6 @@ from .rules import Rules
 logger = logging.getLogger(__name__)
 
 AOMR = "Age Of Mythology Retold"
-
-
-class AoMSettings(settings.Group):
-    class UserDirectory(settings.UserFolderPath):
-        """The user's local Age Of Mythology Retold user folder."""
-        description = "Age Of Mythology Retold User Directory"
-
-    user_folder: UserDirectory = UserDirectory(AOMR)
 
 
 class aomWebWorld(WebWorld):
@@ -504,7 +494,6 @@ class aomWorld(World):
     """
 
     game = AOMR
-    settings: ClassVar[type[AoMSettings]] = AoMSettings
     options_dataclass = AomOptions
     options: AomOptions
     topology_present = True
