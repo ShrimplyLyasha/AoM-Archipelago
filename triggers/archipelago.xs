@@ -1427,6 +1427,7 @@ string APGetCheckText(int id = 0)
     if (id == 3897334) { return "Relic 1: At Western Lake"; }
     if (id == 3897335) { return "Relic 2: Stone Pillars at Southwest of Well of Urd"; }
     if (id == 3897336) { return "Relic 3: Far East of Map"; }
+    if (id == 3897337) { return "Relic 4: Within Enemy Temple"; }
     // FOTT 28
     if (id == 3897434) { return "Relic 1: Broken Buildings in Northwest"; }
     if (id == 3897435) { return "Relic 2: Far South of Settlement"; }
@@ -1498,6 +1499,8 @@ string APGetCheckText(int id = 0)
     if (id == 3917735) { return "Relic 2: Western Harbor"; }
     if (id == 3917736) { return "Relic 3: Shrine Island at East of Western Harbor"; }
     if (id == 3917737) { return "Relic 4: Northeast Entrance to Center"; }
+    if (id == 3917738) { return "Relic 5: West Fountain Near Sky Passage"; }
+    if (id == 3917739) { return "Relic 6: In Enemy Base"; }
     // NA 12
     if (id == 3917834) { return "Relic 1: East of Gaia"; }
     if (id == 3917835) { return "Relic 2: Stone Pillars Northeast From Start"; }
@@ -1558,7 +1561,7 @@ void APShowQueuedCheckMessage(int id = 0)
     // Relicsanity relic locations have local_id >= 10, encoded as id % 100 >= 10.
     // When relicsanity is off (gAPHasRelicCounter == 0) these IDs are still
     // queued by the relic-garrison trigger, but no message should be shown.
-    if ((id % 100 >= 10) && (gAPHasRelicCounter == 0))
+    if (((id - 3866624) % 100 >= 10) && (gAPHasRelicCounter == 0))
     {
         return;
     }
@@ -2343,8 +2346,7 @@ runImmediately
 
     xsEnableRule("APApplyItems");
     xsEnableRule("APAnnounceGod");
-    //xsEnableRule("APEnforceAgeLocks");
-    xsEnableRule("APAnnounceMaxAge");
+    xsEnableRule("APEnforceAgeLocks");
     xsEnableRule("APReapplyUnitUnlocks");
     // Reset per-scenario relic-trickle and relic-effect accumulators, then
     // start the unified enforcement rule.
@@ -2835,7 +2837,12 @@ void APApplyAgeUnlocks()
     // Cache cap for the watcher rule (APEnforceAgeLocks). AOM auto-enables
     // next-tier age techs when prereqs are researched, so we re-disable
     // forbidden tiers each tick.
-    int cap = scenarioFloor + civCount;
+    //
+    // Age-unlock items count from 0 absolutely (not relative to the floor),
+    // so the reachable cap is max(floor, civCount) — NOT floor + civCount.
+    // The floor only guarantees the player starts at least that high.
+    int cap = civCount;
+    if (scenarioFloor > cap) { cap = scenarioFloor; }
     if (cap > 3) { cap = 3; }
     gAPAgeCap = cap;
 }
@@ -3196,7 +3203,7 @@ void APApplyHeroBoosts()
 //   * Building transforms when update_buildings_for_random_god is on.
 //
 // Self-disables when done.  All long-running watchers
-// (APRelicTrickleEnforce, APEnforceAgeLocks, APAnnounceMaxAge, APRandGP*,
+// (APRelicTrickleEnforce, APEnforceAgeLocks, APRandGP*,
 // APReapplyUnitUnlocks) are enabled here so they run for the rest of the
 // scenario.
 //
@@ -4057,10 +4064,20 @@ inactive
 // the previous age is researched, so we must watch every tick and push
 // forbidden techs back to 0 immediately.
 //
-// Cap < 1: re-disable Classical every tick (no condition — just lock).
-// Cap < 2: re-disable Heroic every tick that ClassicalAgeGeneral is active.
-// Cap < 3: re-disable Mythic every tick that HeroicAgeGeneral is active.
-// All 4 civs covered; non-assigned civs are already 0, re-setting is fine.
+// Cap < 1: re-disable Classical every tick.
+// Cap < 2: re-disable Heroic every tick.
+// Cap < 3: re-disable Mythic every tick.
+// All blocks are unconditional — re-setting an already-0 tech to 0 is a
+// no-op, and when the cap permits the age the cap test is false so the
+// block never runs.
+//
+// Techs are resolved by name via kbTechGetID() rather than cTech* tokens:
+// the engine has no built-in constants for these age techs, so cTech*
+// names did not reference the real techs.  kbTechGetID returns the live
+// tech ID (or -1 if the name is absent, which trTechSetStatus ignores).
+// Every minor god of all four FotT/NA/GG civs is listed, including the
+// Retold additions (Pan / Hestia / Persephone) and the fourth Norse god
+// per tier (Ullr / Aegir / Vidar), so no civ can slip an age past the cap.
 // -----------------------------------------------------------------------
 // APEnforceAgeLocks — watcher rule that re-disables forbidden age techs.
 // The AOM engine auto-promotes higher-tier age techs to status 1 (researchable)
@@ -4069,112 +4086,75 @@ inactive
 // APApplyItems (commented out historically; see line ~2199 if present).
 rule APEnforceAgeLocks
 highFrequency
-active
+inactive
 {
     if (gAPAgeCap < 0) { return; }
 
     if (gAPAgeCap < 1)
     {
-        trTechSetStatus(1, cTechClassicalAgeGreek,      0);
-        trTechSetStatus(1, cTechClassicalAgeAthena,     0);
-        trTechSetStatus(1, cTechClassicalAgeHermes,     0);
-        trTechSetStatus(1, cTechClassicalAgeAres,       0);
-        trTechSetStatus(1, cTechClassicalAgeEgyptian,   0);
-        trTechSetStatus(1, cTechClassicalAgeAnubis,     0);
-        trTechSetStatus(1, cTechClassicalAgeBast,       0);
-        trTechSetStatus(1, cTechClassicalAgePtah,       0);
-        trTechSetStatus(1, cTechClassicalAgeNorse,      0);
-        trTechSetStatus(1, cTechClassicalAgeFreyja,     0);
-        trTechSetStatus(1, cTechClassicalAgeHeimdall,   0);
-        trTechSetStatus(1, cTechClassicalAgeForseti,    0);
-        trTechSetStatus(1, cTechClassicalAgeAtlantean,  0);
-        trTechSetStatus(1, cTechClassicalAgePrometheus, 0);
-        trTechSetStatus(1, cTechClassicalAgeLeto,       0);
-        trTechSetStatus(1, cTechClassicalAgeOceanus,    0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeGreek"),      0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeAthena"),     0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeHermes"),     0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeAres"),       0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgePan"),        0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeEgyptian"),   0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeAnubis"),     0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeBast"),       0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgePtah"),       0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeNorse"),      0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeFreyja"),     0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeForseti"),    0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeHeimdall"),   0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeUllr"),       0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeAtlantean"),  0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgePrometheus"), 0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeLeto"),       0);
+        trTechSetStatus(1, kbTechGetID("ClassicalAgeOceanus"),    0);
     }
 
-    if (gAPAgeCap < 2 && trTechStatusActive(1, cTechClassicalAgeGeneral))
+    if (gAPAgeCap < 2)
     {
-        trTechSetStatus(1, cTechHeroicAgeGreek,     0);
-        trTechSetStatus(1, cTechHeroicAgeApollo,    0);
-        trTechSetStatus(1, cTechHeroicAgeDionysus,  0);
-        trTechSetStatus(1, cTechHeroicAgeAphrodite, 0);
-        trTechSetStatus(1, cTechHeroicAgeEgyptian,  0);
-        trTechSetStatus(1, cTechHeroicAgeSekhmet,   0);
-        trTechSetStatus(1, cTechHeroicAgeSobek,     0);
-        trTechSetStatus(1, cTechHeroicAgeNephthys,  0);
-        trTechSetStatus(1, cTechHeroicAgeNorse,     0);
-        trTechSetStatus(1, cTechHeroicAgeBragi,     0);
-        trTechSetStatus(1, cTechHeroicAgeNjord,     0);
-        trTechSetStatus(1, cTechHeroicAgeSkadi,     0);
-        trTechSetStatus(1, cTechHeroicAgeAtlantean, 0);
-        trTechSetStatus(1, cTechHeroicAgeHyperion,  0);
-        trTechSetStatus(1, cTechHeroicAgeRheia,     0);
-        trTechSetStatus(1, cTechHeroicAgeTheia,     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeGreek"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeApollo"),    0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeDionysus"),  0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeAphrodite"), 0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeHestia"),    0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeEgyptian"),  0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeSekhmet"),   0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeSobek"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeNephthys"),  0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeNorse"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeBragi"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeNjord"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeSkadi"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeAegir"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeAtlantean"), 0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeHyperion"),  0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeRheia"),     0);
+        trTechSetStatus(1, kbTechGetID("HeroicAgeTheia"),     0);
     }
 
-    if (gAPAgeCap < 3 && trTechStatusActive(1, cTechHeroicAgeGeneral))
+    if (gAPAgeCap < 3)
     {
-        trTechSetStatus(1, cTechMythicAgeGreek,      0);
-        trTechSetStatus(1, cTechMythicAgeHera,       0);
-        trTechSetStatus(1, cTechMythicAgeHephaestus, 0);
-        trTechSetStatus(1, cTechMythicAgeArtemis,    0);
-        trTechSetStatus(1, cTechMythicAgeEgyptian,   0);
-        trTechSetStatus(1, cTechMythicAgeOsiris,     0);
-        trTechSetStatus(1, cTechMythicAgeHorus,      0);
-        trTechSetStatus(1, cTechMythicAgeThoth,      0);
-        trTechSetStatus(1, cTechMythicAgeNorse,      0);
-        trTechSetStatus(1, cTechMythicAgeBaldr,      0);
-        trTechSetStatus(1, cTechMythicAgeTyr,        0);
-        trTechSetStatus(1, cTechMythicAgeHel,        0);
-        trTechSetStatus(1, cTechMythicAgeAtlantean,  0);
-        trTechSetStatus(1, cTechMythicAgeHelios,     0);
-        trTechSetStatus(1, cTechMythicAgeAtlas,      0);
-        trTechSetStatus(1, cTechMythicAgeHekate,     0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeGreek"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHera"),       0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHephaestus"), 0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeArtemis"),    0);
+        trTechSetStatus(1, kbTechGetID("MythicAgePersephone"), 0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeEgyptian"),   0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeOsiris"),     0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHorus"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeThoth"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeNorse"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeBaldr"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeTyr"),        0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHel"),        0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeVidar"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeAtlantean"),  0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHelios"),     0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeAtlas"),      0);
+        trTechSetStatus(1, kbTechGetID("MythicAgeHekate"),     0);
     }
-}
-
-// -----------------------------------------------------------------------
-// APAnnounceMaxAge — debug chat showing the max age the player can reach
-// for their assigned civilization. Fires once at scenario start.
-// -----------------------------------------------------------------------
-// APAnnounceMaxAge — pops a toast each time the player advances an age,
-// announcing whether a higher tier is currently reachable based on age
-// unlock items.  Always-on watcher.
-rule APAnnounceMaxAge
-highFrequency
-inactive
-{
-    int _ageCount = 0;
-    int _ai = 0;
-    int _aid = 0;
-    string _civ = "";
-    if (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades) { _civ = "Greek"; }
-    if (gAPMajorGod == cAPMajorIsis || gAPMajorGod == cAPMajorRa       || gAPMajorGod == cAPMajorSet)   { _civ = "Egyptian"; }
-    if (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor     || gAPMajorGod == cAPMajorLoki)  { _civ = "Norse"; }
-    if (gAPMajorGod == cAPMajorKronos || gAPMajorGod == cAPMajorOranos || gAPMajorGod == cAPMajorGaia)  { _civ = "Atlantean"; }
-
-    for (_ai = 9; _ai < gAPItemCount; _ai++)
-    {
-        _aid = gAPItems[_ai];
-        if (_civ == "Greek"     && _aid == cGREEK_AGE_UNLOCK)     { _ageCount++; }
-        if (_civ == "Egyptian"  && _aid == cEGYPTIAN_AGE_UNLOCK)  { _ageCount++; }
-        if (_civ == "Norse"     && _aid == cNORSE_AGE_UNLOCK)     { _ageCount++; }
-        if (_civ == "Atlantean" && _aid == cATLANTEAN_AGE_UNLOCK) { _ageCount++; }
-    }
-
-    int _floor = APGetStartingAgeCount(gAPScenarioId);
-    int _max = _floor;
-    if (_ageCount > _max) { _max = _ageCount; }
-    if (_max > 3) { _max = 3; }
-
-    string _ageName = "Archaic";
-    if (_max == 1) { _ageName = "Classical"; }
-    if (_max == 2) { _ageName = "Heroic"; }
-    if (_max == 3) { _ageName = "Mythic"; }
-
-    trChatSend(0, "AP DEBUG: Max reachable age = " + _ageName + " (civ=" + _civ + ", floor=" + _floor + ", unlocks=" + _ageCount + ")");
-    xsDisableSelf();
 }
 
 // -----------------------------------------------------------------------

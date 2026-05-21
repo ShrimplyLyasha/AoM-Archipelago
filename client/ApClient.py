@@ -552,16 +552,6 @@ class AoMCommandProcessor(ClientCommandProcessor):
             all_key_ids          = sorted({iid for iid in scenario_to_key_id.values()})
             held_keys            = {iid for iid in all_key_ids if iid in received}
 
-            campaign_unlocked_by_id = {
-                1: has_greek, 2: has_egyptian, 3: has_norse,
-                4: has_atlantis, 5: has_na, 6: has_gg,
-            }
-
-            # Campaign prefix shown before the scenario display_name.
-            # FOTT campaigns (1-4) get no prefix; NA and GG use their short codes.
-            # Scenarios whose campaign item is not yet received are prefixed "NA".
-            _camp_prefix = {1: "", 2: "", 3: "", 4: "", 5: "NA", 6: "GG"}
-
             max_bundle = max(
                 (sum(1 for s in aomScenarioData
                      if scenario_to_key_id.get(s.global_number) == kid)
@@ -583,14 +573,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
                 kid = scenario_to_key_id.get(scenario.global_number)
                 if kid is None or kid not in held_keys:
                     continue
-                campaign_open = bool(campaign_unlocked_by_id.get(scenario.campaign.id, False))
-                if not campaign_open:
-                    # Campaign item not yet received — always use "NA" regardless of civ
-                    prefix = "NA "
-                else:
-                    prefix = _camp_prefix.get(scenario.campaign.id, "")
-                    prefix = (prefix + " ") if prefix else ""
-                self.output(f"  {prefix}{scenario.display_name}")
+                self.output(f"  {scenario.display_name}")
 
     # ---------------------------------------------------------------------------
     # Civilization item commands — unit/myth unlocks and age unlocks only

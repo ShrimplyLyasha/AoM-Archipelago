@@ -1817,6 +1817,7 @@ class aomLocationData(enum.IntEnum):
     FOTT_27_RELIC_1 = (global_location_id(aomScenarioData.FOTT_27.id, 10), "Relic 1: At Western Lake", aomScenarioData.FOTT_27, aomLocationType.RELIC)
     FOTT_27_RELIC_2 = (global_location_id(aomScenarioData.FOTT_27.id, 11), "Relic 2: Stone Pillars at Southwest of Well of Urd", aomScenarioData.FOTT_27, aomLocationType.RELIC)
     FOTT_27_RELIC_3 = (global_location_id(aomScenarioData.FOTT_27.id, 12), "Relic 3: Far East of Map", aomScenarioData.FOTT_27, aomLocationType.RELIC)
+    FOTT_27_RELIC_4 = (global_location_id(aomScenarioData.FOTT_27.id, 13), "Relic 4: Within Enemy Temple", aomScenarioData.FOTT_27, aomLocationType.RELIC)
 
     # FOTT 28 relics
     FOTT_28_RELIC_1 = (global_location_id(aomScenarioData.FOTT_28.id, 10), "Relic 1: Broken Buildings in Northwest", aomScenarioData.FOTT_28, aomLocationType.RELIC)
@@ -1901,6 +1902,8 @@ class aomLocationData(enum.IntEnum):
     NA_11_RELIC_2 = (global_location_id(aomScenarioData.NA_11.id, 11), "Relic 2: Western Harbor", aomScenarioData.NA_11, aomLocationType.RELIC)
     NA_11_RELIC_3 = (global_location_id(aomScenarioData.NA_11.id, 12), "Relic 3: Shrine Island at East of Western Harbor", aomScenarioData.NA_11, aomLocationType.RELIC)
     NA_11_RELIC_4 = (global_location_id(aomScenarioData.NA_11.id, 13), "Relic 4: Northeast Entrance to Center", aomScenarioData.NA_11, aomLocationType.RELIC)
+    NA_11_RELIC_5 = (global_location_id(aomScenarioData.NA_11.id, 14), "Relic 5: West Fountain Near Sky Passage", aomScenarioData.NA_11, aomLocationType.RELIC)
+    NA_11_RELIC_6 = (global_location_id(aomScenarioData.NA_11.id, 15), "Relic 6: In Enemy Base", aomScenarioData.NA_11, aomLocationType.RELIC)
 
     # NA 12 relics
     NA_12_RELIC_1 = (global_location_id(aomScenarioData.NA_12.id, 10), "Relic 1: East of Gaia", aomScenarioData.NA_12, aomLocationType.RELIC)

@@ -215,12 +215,34 @@ class AoMManager(GameManager):
                     grid.bind(minimum_height=grid.setter("height"))
 
                     for s in scenarios:
-                        tile = Label(
-                            text=s.display_name, markup=True,
-                            halign="center", valign="middle",
-                            size_hint_y=None, height=dp(80), font_size=dp(22),
+                        tile = BoxLayout(
+                            orientation="vertical",
+                            size_hint_y=None, height=dp(80),
                         )
-                        tile.bind(size=tile.setter("text_size"))
+                        # Scenario name: clamped to a single line (ellipsised on
+                        # overflow) so the god and check rows below it are never
+                        # pushed out of the tile when the window is narrow.
+                        name_lbl = Label(
+                            markup=True, halign="center", valign="top",
+                            shorten=True, shorten_from="right", max_lines=1,
+                            size_hint_y=None, height=dp(28),
+                        )
+                        name_lbl.bind(size=name_lbl.setter("text_size"))
+                        god_lbl = Label(
+                            markup=True, halign="center", valign="middle",
+                            font_size=dp(22),
+                            size_hint_y=None, height=dp(26),
+                        )
+                        god_lbl.bind(size=god_lbl.setter("text_size"))
+                        checks_lbl = Label(
+                            markup=True, halign="center", valign="middle",
+                            font_size=dp(22),
+                            size_hint_y=None, height=dp(26),
+                        )
+                        checks_lbl.bind(size=checks_lbl.setter("text_size"))
+                        tile.add_widget(name_lbl)
+                        tile.add_widget(god_lbl)
+                        tile.add_widget(checks_lbl)
 
                         with tile.canvas.before:
                             bg_color   = Color(0.2, 0.2, 0.2, 1.0)
@@ -274,7 +296,8 @@ class AoMManager(GameManager):
 
                         # Store bg_color, slash_col, and campaign name for the recolor loop.
                         self._scenario_tile_widgets[s.global_number] = (
-                            tile, bg_color, slash_col, s.campaign.name
+                            tile, bg_color, slash_col, s.campaign.name,
+                            name_lbl, god_lbl, checks_lbl,
                         )
                         grid.add_widget(tile)
 
@@ -282,7 +305,7 @@ class AoMManager(GameManager):
                     self._scenarios_outer.add_widget(section)
 
             # Recolor every tile based on current state.
-            for sid, (tile, color, slash_col, camp_name) in self._scenario_tile_widgets.items():
+            for sid, (tile, color, slash_col, camp_name, name_lbl, god_lbl, checks_lbl) in self._scenario_tile_widgets.items():
                 base = _CAMPAIGN_TILE_COLORS.get(camp_name, (0.5, 0.5, 0.5))
                 kid = scenario_to_key_id.get(sid)
                 key_held = (kid is not None and kid in held_keys)
@@ -315,43 +338,42 @@ class AoMManager(GameManager):
                 else:
                     slash_col.rgba = (0.5, 0.5, 0.5, 0.4)
 
-                # Build tile text: scenario name (truncated to first line), god, check count.
-                name = scen_obj.display_name if scen_obj else str(sid)
-                # Keep adding words until the running total exceeds 14 chars so the name
-                # fits on a single line without wrapping and pushing god/checks off the tile.
-                words = name.split()
-                kept, total_chars = [], 0
-                for w in words:
-                    candidate = total_chars + len(w) + (1 if kept else 0)
-                    if kept and candidate > 14:
-                        break
-                    kept.append(w)
-                    total_chars = candidate
-                name_line = " ".join(kept)
-                # Text color: black on fully-unlocked NEW_ATLANTIS tiles (teal background
-                # makes white text hard to read) and fully-unlocked FOTT_EGYPTIAN tiles
-                # (bright yellow background also makes white text hard to read); white elsewhere.
+                # Build tile text:
+                #   Row 1: "[big bold num]. [small name]"  e.g. "1. Omens"
+                #   Row 2: god name (italic)
+                #   Row 3: check count
+                # valign=top means overflow clips from the bottom, so the
+                # number is never the thing that gets dropped.
+                full_name = scen_obj.display_name if scen_obj else str(sid)
+                _num_tok, _sep, _scen_name = full_name.partition(". ")
+                # Text color: black on bright-background tiles, white elsewhere.
                 if fully_unlocked and camp_name in ("NEW_ATLANTIS", "FOTT_EGYPTIAN"):
-                    name_line_markup = f"[b][color=000000]{name_line}[/color][/b]"
+                    _c0, _c1 = "[color=000000]", "[/color]"
                     god_markup = lambda g: f"[i][color=000000]{g}[/color][/i]"
                     checks_markup = lambda s: f"[color=000000]{s}[/color]"
                 else:
-                    name_line_markup = f"[b]{name_line}[/b]"
+                    _c0, _c1 = "", ""
                     god_markup = lambda g: f"[i]{g}[/i]"
                     checks_markup = lambda s: s
+                if _sep:
+                    name_line_markup = (
+                        f"[size=22][b]{_c0}{_num_tok}.{_c1}[/b][/size]"
+                        f" [size=15]{_c0}{_scen_name}{_c1}[/size]"
+                    )
+                else:
+                    name_line_markup = f"[b]{_c0}{full_name}{_c1}[/b]"
 
-                lines = [name_line_markup]
+                name_lbl.text = name_line_markup
 
                 god_name = scenario_to_god.get(sid)
-                if god_name:
-                    lines.append(god_markup(god_name))
+                god_lbl.text = god_markup(god_name) if god_name else ""
 
                 check_info = scenario_check_counts.get(sid)
                 if check_info:
                     found, total = check_info
-                    lines.append(checks_markup(f"{found}/{total} checks"))
-
-                tile.text = "\n".join(lines)
+                    checks_lbl.text = checks_markup(f"{found}/{total} checks")
+                else:
+                    checks_lbl.text = ""
 
         Clock.schedule_once(_update)
 

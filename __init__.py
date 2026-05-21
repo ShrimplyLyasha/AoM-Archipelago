@@ -1581,7 +1581,7 @@ class aomWorld(World):
         data: dict = {
             "version_public": 0,
             "version_major":  2,
-            "version_minor":  2,
+            "version_minor":  3,
             "disabled_campaigns": [c.id for c in self.disabled_campaigns],
             "world_id":       ((time.time_ns() >> 17) + self.player) & 0x7FFF_FFFF,
             "final_mode":     int(self.options.final_scenarios.value),
@@ -1604,6 +1604,15 @@ class aomWorld(World):
         data["scenario_to_key_id"]       = dict(self.scenario_to_key_id)
         data["bundle_display_names"]     = dict(self.bundle_display_names)
         data["starter_bundle_key_id"]    = self.starter_bundle_key_id
+        # Per-scenario display label keyed by global_number.  Lets the client
+        # render /progress from structured data rather than parsing item-name
+        # strings — avoids the "NA " double-prefix / missing-prefix bug.
+        from .locations.Scenarios import aomScenarioData
+        data["scenario_display_names"]   = {
+            s.global_number: s.display_name
+            for s in aomScenarioData
+            if s.campaign not in self.disabled_campaigns
+        }
 
         if self.gem_shop_enabled:
             data["wins_to_open_shop"]   = int(self.options.wins_to_open_shop.value)
