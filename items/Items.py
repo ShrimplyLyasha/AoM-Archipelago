@@ -597,6 +597,27 @@ class aomItemData(enum.IntEnum):
     TRAP_BRONZE          = 9957, "Trap: Bronze",           Trap(trap_type=24)
     TRAP_NIDHOGG         = 9958, "Trap: Nidhogg",          Trap(trap_type=25)
     TRAP_SHOCKWAVE       = 9959, "Trap: Shockwave",         Trap(trap_type=26)
+    TRAP_TEMPEST         = 9960, "Trap: Tempest",           Trap(trap_type=27)
+    TRAP_INFERNO         = 9961, "Trap: Inferno",           Trap(trap_type=28)
+    TRAP_CORRUPTED_GROUND= 9962, "Trap: Corrupted Ground",  Trap(trap_type=29)
+    TRAP_YINGLONGS_WRATH = 9963, "Trap: Yinglong's Wrath",  Trap(trap_type=30)
+    TRAP_KUSANAGI        = 9964, "Trap: Kusanagi",          Trap(trap_type=31)
+    TRAP_SWAMPLAND       = 9965, "Trap: Swampland",         Trap(trap_type=32)
+    TRAP_THUNDER_BURST   = 9966, "Trap: Thunder Burst",     Trap(trap_type=33)
+    TRAP_SMITING_GUST    = 9967, "Trap: Smiting Gust",      Trap(trap_type=34)
+    TRAP_DIVINE_SLASH    = 9968, "Trap: Divine Slash",      Trap(trap_type=35)
+    TRAP_DRAGON_TYPHOON  = 9969, "Trap: Dragon Typhoon",    Trap(trap_type=36)
+    TRAP_INFESTATION     = 9970, "Trap: Infestation",       Trap(trap_type=37)
+    TRAP_LULLABY         = 9971, "Trap: Lullaby",           Trap(trap_type=38)
+    TRAP_PURGE           = 9972, "Trap: Purge",             Trap(trap_type=39)
+    TRAP_EARTH_MONSTER   = 9973, "Trap: Earth Monster",     Trap(trap_type=40)
+    TRAP_STARFALL        = 9974, "Trap: Starfall",          Trap(trap_type=41)
+    TRAP_CHICKEN_STORM   = 9975, "Trap: Chicken Storm",     Trap(trap_type=42)
+    TRAP_UNDERMINE       = 9976, "Trap: Undermine",         Trap(trap_type=43)
+    TRAP_DROUGHT_LAND    = 9977, "Trap: Drought Land",      Trap(trap_type=44)
+    TRAP_GREAT_FLOOD     = 9978, "Trap: Great Flood",       Trap(trap_type=45)
+    TRAP_VOLCANO         = 9979, "Trap: Volcano",           Trap(trap_type=46)
+    TRAP_VANISH          = 9940, "Trap: Vanish",            Trap(trap_type=47)
 
 
     # -----------------------------------------------------------------------
@@ -771,7 +792,7 @@ class aomItemData(enum.IntEnum):
     AJAX_AMANRA_DREAMS            = 4036, "Ajax and Amanra join you for A Place in My Dreams", ReinforcementUseful("AjaxSPC", 1)
 
     # Myth unit tier unlocks — forbidden at start, unlocked by item
-    GREEK_CLASSICAL_MYTH_UNITS               = 5016, "Can train Greek Classical Myth Units", MythUnitUnlockProgression(['Centaur', 'Minotaur', 'Cyclops', 'Lykaon'], "Greek", "Classical")
+    GREEK_CLASSICAL_MYTH_UNITS               = 5016, "Can train Greek Classical Myth Units", MythUnitUnlockProgression(['Centaur', 'Minotaur', 'Cyclops', 'LykaonVillager'], "Greek", "Classical")
     GREEK_HEROIC_MYTH_UNITS                  = 5017, "Can train Greek Heroic Myth Units", MythUnitUnlockProgression(['Hydra', 'Manticore', 'NemeanLion', 'Hamadryad', 'Scylla'], "Greek", "Heroic")
     GREEK_MYTHIC_MYTH_UNITS                  = 5018, "Can train Greek Mythic Myth Units", MythUnitUnlockProgression(['Medusa', 'Colossus', 'Chimera', 'Siren', 'Harpy', 'Carcinos'], "Greek", "Mythic")
     EGYPTIAN_CLASSICAL_MYTH_UNITS            = 5019, "Can train Egyptian Classical Myth Units", MythUnitUnlockProgression(['Sphinx', 'Wadjet', 'Anubite'], "Egyptian", "Classical")

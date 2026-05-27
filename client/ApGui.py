@@ -30,9 +30,218 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
+from kivy.uix.progressbar import ProgressBar
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.togglebutton import ToggleButton
 from kvui import GameManager, LogtoUI
 
+
+def _hex_rgba(h: str, a: float = 1.0) -> tuple:
+    """Convert '#RRGGBB' / 'RRGGBB' to a Kivy (r,g,b,a) tuple in 0..1."""
+    h = h.lstrip("#")
+    return (int(h[0:2], 16)/255.0, int(h[2:4], 16)/255.0, int(h[4:6], 16)/255.0, a)
+
+
+# =============================================================================
+# Tab system — Civilizations / Scenarios / Relics all share the same
+# `_WrapTabBar` widget below.  Each tab bar holds an arbitrary number of
+# `_BeveledToggleButton`s laid out in a wrapping GridLayout (cols=4 by default)
+# so adding more civilizations or campaigns just means adding more tabs — the
+# layout grows down rather than overflowing the available width.
+#
+# Adding a NEW CIVILIZATION (e.g. Japanese):
+#   1. Add a "Japanese" entry to `_CIV_HEADER_HEX` below with the civ's color.
+#   2. Add "Japanese" to the `_CIV_ORDER` list inside `update_civs_view`.
+#   3. Add "Japanese" to `_GOD_TO_CIV` / civ-id sets in rules/Rules.py and
+#      __init__.py so the world-side data agrees.
+#   4. (Optional) Add age-tech mapping and per-god minor-god list in
+#      __init__.py + archipelago.xs so the new civ plays correctly in-game.
+#   No client GUI changes beyond steps 1-2 are needed; the tab bar auto-builds
+#   one sub-tab per active civ, Summary auto-includes a strength row, and
+#   `_civ_items_all()` auto-collects items tagged with the new culture.
+#
+# Adding a NEW CAMPAIGN (e.g. Aztec):
+#   1. Add the Campaign enum entry to locations/Campaigns.py with a unique
+#      campaign_name and stable `id`.
+#   2. Add per-campaign scenarios to locations/Scenarios.py + Locations.py.
+#   3. Add the campaign.name -> RGB triple to `_CAMPAIGN_TILE_COLORS` and
+#      `_RELIC_CAMPAIGN_HEX` at module / class scope.
+#   4. (Optional) Add a YAML option to enable/disable the campaign.
+#   The Scenarios + Relics tabs both auto-pick up the new campaign as a new
+#   sub-tab; the Overview/Summary rows auto-include it.
+# =============================================================================
+
+
+class _BeveledToggleButton(ToggleButton):
+    """ToggleButton with painted top/left highlights and bottom/right shadows
+    so unpressed state looks raised and pressed state looks recessed.  Also
+    supports a `locked` overlay (muted background + diagonal black slashes)
+    used for campaign tabs whose section isn't yet unlocked in the seed."""
+
+    def __init__(self, **kw):
+        kw.setdefault("bold", True)
+        super().__init__(**kw)
+        self._base_bg = tuple(kw.get("background_color", (1, 1, 1, 1)))
+        self._locked  = False
+        # Two-layer bevel: outer thick highlight/shadow + inner thin pair for depth.
+        with self.canvas.after:
+            self._hi_col    = Color(1, 1, 1, 0.55)
+            self._hi_top    = Line(points=[0, 0, 0, 0], width=2.4)
+            self._hi_left   = Line(points=[0, 0, 0, 0], width=2.4)
+            self._hi2_col   = Color(1, 1, 1, 0.18)
+            self._hi2_top   = Line(points=[0, 0, 0, 0], width=1.2)
+            self._hi2_left  = Line(points=[0, 0, 0, 0], width=1.2)
+            self._sh_col    = Color(0, 0, 0, 0.65)
+            self._sh_bot    = Line(points=[0, 0, 0, 0], width=2.4)
+            self._sh_right  = Line(points=[0, 0, 0, 0], width=2.4)
+            self._sh2_col   = Color(0, 0, 0, 0.30)
+            self._sh2_bot   = Line(points=[0, 0, 0, 0], width=1.2)
+            self._sh2_right = Line(points=[0, 0, 0, 0], width=1.2)
+        # Slashes go on canvas.before so the button's text texture (rendered
+        # by Kivy on the default canvas) sits *above* them and stays legible.
+        with self.canvas.before:
+            from kivy.graphics import StencilPush, StencilUse, StencilUnUse, StencilPop
+            StencilPush()
+            self._slash_clip1 = Rectangle(pos=(0, 0), size=(0, 0))
+            StencilUse()
+            self._slash_col = Color(0, 0, 0, 0.0)  # alpha 0 = hidden by default
+            self._slash_lines = [Line(points=[0, 0, 0, 0], width=2) for _ in range(_SLASH_COUNT)]
+            StencilUnUse()
+            self._slash_clip2 = Rectangle(pos=(0, 0), size=(0, 0))
+            StencilPop()
+        self.bind(pos=self._update_edges, size=self._update_edges, state=self._update_edges)
+        self._update_edges()
+
+    def set_locked(self, locked: bool) -> None:
+        """Toggle the locked overlay: mute the background to ~35% brightness
+        and draw diagonal black slashes across the face."""
+        self._locked = bool(locked)
+        if self._locked:
+            r, g, b, a = self._base_bg
+            self.background_color = (r * 0.35, g * 0.35, b * 0.35, a)
+            self._slash_col.rgba = (0, 0, 0, 0.85)
+        else:
+            self.background_color = self._base_bg
+            self._slash_col.rgba = (0, 0, 0, 0.0)
+        self._update_edges()
+
+    def _update_edges(self, *_):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if self.state == "down":
+            # Pressed/selected: invert — dark on top/left, light on bottom/right.
+            self._hi_col.rgba   = (0, 0, 0, 0.65)
+            self._hi2_col.rgba  = (0, 0, 0, 0.30)
+            self._sh_col.rgba   = (1, 1, 1, 0.35)
+            self._sh2_col.rgba  = (1, 1, 1, 0.15)
+        else:
+            self._hi_col.rgba   = (1, 1, 1, 0.55)
+            self._hi2_col.rgba  = (1, 1, 1, 0.18)
+            self._sh_col.rgba   = (0, 0, 0, 0.65)
+            self._sh2_col.rgba  = (0, 0, 0, 0.30)
+        # Outer edges (1 px from outside).
+        self._hi_top.points    = [x,         y + h - 1.5, x + w,       y + h - 1.5]
+        self._hi_left.points   = [x + 1.5,   y,           x + 1.5,     y + h]
+        self._sh_bot.points    = [x,         y + 1.5,     x + w,       y + 1.5]
+        self._sh_right.points  = [x + w - 1.5, y,         x + w - 1.5, y + h]
+        # Inner edges (3-4 px in) for added depth.
+        self._hi2_top.points   = [x + 3,     y + h - 4,   x + w - 3,   y + h - 4]
+        self._hi2_left.points  = [x + 4,     y + 3,       x + 4,       y + h - 3]
+        self._sh2_bot.points   = [x + 3,     y + 4,       x + w - 3,   y + 4]
+        self._sh2_right.points = [x + w - 4, y + 3,       x + w - 4,   y + h - 3]
+        # Stencil clip + diagonal slashes (hidden via alpha=0 when unlocked).
+        self._slash_clip1.pos  = (x, y); self._slash_clip1.size = (w, h)
+        self._slash_clip2.pos  = (x, y); self._slash_clip2.size = (w, h)
+        spacing  = 12
+        i        = 0
+        x_start  = -h
+        while x_start < w and i < len(self._slash_lines):
+            self._slash_lines[i].points = [
+                x + x_start,     y,
+                x + x_start + h, y + h,
+            ]
+            i += 1
+            x_start += spacing
+        while i < len(self._slash_lines):
+            self._slash_lines[i].points = [0, 0, 0, 0]
+            i += 1
+
+
+class _WrapTabBar(BoxLayout):
+    """Light-weight tab system that wraps tab buttons across rows of fixed
+    column count and swaps content below.  Replaces Kivy's TabbedPanel which
+    only supports a single row of tabs.
+
+    Usage:
+        tb = _WrapTabBar(cols=4, btn_height=dp(44))
+        tb.add_tab("Summary", (0.4,0.4,0.4,0.6), summary_widget)
+        tb.add_tab("Greek",   (0.3,0.3,1.0,0.6), greek_widget)
+        ...
+        tb.select(0)
+    """
+
+    def __init__(self, cols: int = 4, btn_height: int = 44, **kw):
+        super().__init__(orientation="vertical", spacing=4, **kw)
+        self._cols       = cols
+        self._btn_height = btn_height
+        self._btn_group  = f"_aom_tab_{id(self)}"
+        self._buttons: list = []
+        self._contents: list = []
+
+        self._btn_grid = GridLayout(cols=cols, size_hint_y=None, spacing=4)
+        self._btn_grid.bind(minimum_height=self._btn_grid.setter("height"))
+        self._content_holder = BoxLayout(orientation="vertical")
+        self.add_widget(self._btn_grid)
+        self.add_widget(self._content_holder)
+
+    def clear_tabs(self) -> None:
+        self._btn_grid.clear_widgets()
+        self._content_holder.clear_widgets()
+        self._buttons  = []
+        self._contents = []
+
+    def add_tab(self, text: str, rgba: tuple, content) -> int:
+        idx = len(self._buttons)
+        btn = _BeveledToggleButton(
+            text=text, group=self._btn_group, markup=True,
+            size_hint_y=None, height=self._btn_height,
+            background_color=rgba, background_normal="", background_down="",
+        )
+        btn.bind(on_press=lambda _b, i=idx: self.select(i))
+        self._btn_grid.add_widget(btn)
+        self._buttons.append(btn)
+        self._contents.append(content)
+        return idx
+
+    def select(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self._buttons):
+            return
+        self._content_holder.clear_widgets()
+        self._content_holder.add_widget(self._contents[idx])
+        for i, b in enumerate(self._buttons):
+            b.state = "down" if i == idx else "normal"
+
+    def set_button_text(self, idx: int, text: str) -> None:
+        if 0 <= idx < len(self._buttons):
+            self._buttons[idx].text = text
+
+    def set_tab_locked(self, idx: int, locked: bool) -> None:
+        if 0 <= idx < len(self._buttons):
+            self._buttons[idx].set_locked(locked)
+
+
+# God-name -> civ-color hex used for the scenario tile god label.  Matches
+# _CIV_HEADER_HEX so the god name shares the civ's color scheme.  Add new
+# DLC majors here when introduced (e.g. Japanese gods -> their civ color).
+_GOD_TO_CIV_COLOR: dict = {
+    # Greek (blue)
+    "Zeus": "4D4DFF", "Poseidon": "4D4DFF", "Hades": "4D4DFF", "Demeter": "4D4DFF",
+    # Egyptian (yellow)
+    "Isis": "FFE033", "Ra": "FFE033", "Set": "FFE033",
+    # Norse (rusty red / brown)
+    "Odin": "CC7070", "Thor": "CC7070", "Loki": "CC7070", "Freyr": "CC7070",
+    # Atlantean (teal)
+    "Kronos": "00FFFF", "Oranos": "00FFFF", "Gaia": "00FFFF",
+}
 
 # RGB triples (0-1) per campaign for the Scenarios tab tiles.
 # Matches the colors specified in the option spec.
@@ -132,21 +341,27 @@ class AoMManager(GameManager):
 
     def build_scenarios_tab(self) -> None:
         """Lazy-build 'Scenarios' tab. kvui modern API: `add_client_tab(title, content)`.
-        Called from on_start() so the tab always appears regardless of option settings."""
+        Top-level kvui tab wraps an inner TabbedPanel: one sub-tab per campaign
+        plus an Overview tab showing per-campaign progress at-a-glance."""
         if getattr(self, "_scenarios_tab", None) is not None:
             return
-        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-        # Top padding pushes the first row of tiles below the status panel (dp(100) tall).
-        outer = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8), padding=(dp(6), dp(100), dp(6), dp(6)))
-        outer.bind(minimum_height=outer.setter("height"))
-        scroll.add_widget(outer)
+        root_box = BoxLayout(
+            orientation="vertical",
+            padding=(dp(6), dp(100), dp(6), dp(4)),  # top pad clears status panel
+            spacing=dp(4),
+        )
+        tabbar = _WrapTabBar(cols=4, btn_height=dp(44))
+        root_box.add_widget(tabbar)
         try:
-            self.add_client_tab("Scenarios", scroll)
+            self.add_client_tab("Scenarios", root_box)
         except Exception as ex:
             logging.getLogger(__name__).warning(f"Could not add Scenarios tab: {ex}")
             return
-        self._scenarios_tab = scroll
-        self._scenarios_outer = outer
+        self._scenarios_tab        = root_box
+        self._scenarios_tabbar     = tabbar
+        self._scenarios_overview   = None
+        self._campaign_subtabs: dict = {}     # camp.name -> (button_idx, short_name)
+        self._campaign_grids: dict   = {}
         self._scenario_tile_widgets: dict = {}
 
     def update_scenarios_view(
@@ -187,9 +402,23 @@ class AoMManager(GameManager):
 
             if not getattr(self, "_scenario_tile_widgets", None):
                 # First-time grid build.
-                self._scenarios_outer.clear_widgets()
+                self._scenarios_tabbar.clear_tabs()
                 self._scenario_tile_widgets = {}
-                # Group by campaign in enum order.
+                self._campaign_subtabs      = {}
+                self._campaign_grids        = {}
+
+                # --- Overview tab (default) ---
+                ov_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                ov_box    = BoxLayout(
+                    orientation="vertical", size_hint_y=None,
+                    spacing=dp(6), padding=(dp(8), dp(8), dp(8), dp(8)),
+                )
+                ov_box.bind(minimum_height=ov_box.setter("height"))
+                ov_scroll.add_widget(ov_box)
+                self._scenarios_tabbar.add_tab("Overview", (0.35, 0.35, 0.35, 0.7), ov_scroll)
+                self._scenarios_overview = ov_box
+
+                # Group scenarios by campaign in enum order.
                 by_campaign: dict = {}
                 for s in aomScenarioData:
                     by_campaign.setdefault(s.campaign, []).append(s)
@@ -197,27 +426,30 @@ class AoMManager(GameManager):
                 for campaign, scenarios in by_campaign.items():
                     if campaign.id in disabled_campaign_ids:
                         continue
-                    section = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
-                    section.bind(minimum_height=section.setter("height"))
-
-                    header = Label(
-                        text=f"[b]{campaign.campaign_name}[/b]",
-                        markup=True, halign="left", valign="middle",
-                        size_hint_y=None, height=dp(36), font_size=dp(26),
+                    _short = campaign.campaign_name.replace("Fall of the Trident", "FotT")
+                    base_rgb = _CAMPAIGN_TILE_COLORS.get(campaign.name, (0.5, 0.5, 0.5))
+                    scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                    section = BoxLayout(
+                        orientation="vertical", size_hint_y=None,
+                        spacing=dp(2), padding=(dp(6), dp(6), dp(6), dp(6)),
                     )
-                    header.bind(size=header.setter("text_size"))
-                    section.add_widget(header)
+                    section.bind(minimum_height=section.setter("height"))
+                    scroll.add_widget(section)
+                    idx = self._scenarios_tabbar.add_tab(
+                        _short, (base_rgb[0], base_rgb[1], base_rgb[2], 0.7), scroll,
+                    )
+                    self._campaign_subtabs[campaign.name] = (idx, _short, campaign.id)
 
-                    # 5 columns; GridLayout auto-sizes tile widths.
-                    # At ~800 px window the natural width per tile is ~160 px, giving
-                    # approximately a 2:1 width:height ratio with the dp(80) height below.
-                    grid = GridLayout(cols=5, size_hint_y=None, spacing=dp(4))
+                    # 2-col wide tiles; each campaign now has its own sub-tab so
+                    # there's plenty of horizontal room for full scenario names.
+                    grid = GridLayout(cols=2, size_hint_y=None, spacing=dp(6))
                     grid.bind(minimum_height=grid.setter("height"))
+                    self._campaign_grids[campaign.name] = (grid, campaign.campaign_name)
 
                     for s in scenarios:
                         tile = BoxLayout(
                             orientation="vertical",
-                            size_hint_y=None, height=dp(80),
+                            size_hint_y=None, height=dp(110),
                         )
                         # Scenario name: clamped to a single line (ellipsised on
                         # overflow) so the god and check rows below it are never
@@ -225,7 +457,7 @@ class AoMManager(GameManager):
                         name_lbl = Label(
                             markup=True, halign="center", valign="top",
                             shorten=True, shorten_from="right", max_lines=1,
-                            size_hint_y=None, height=dp(28),
+                            size_hint_y=None, height=dp(40), font_size=dp(22),
                         )
                         name_lbl.bind(size=name_lbl.setter("text_size"))
                         god_lbl = Label(
@@ -302,7 +534,6 @@ class AoMManager(GameManager):
                         grid.add_widget(tile)
 
                     section.add_widget(grid)
-                    self._scenarios_outer.add_widget(section)
 
             # Recolor every tile based on current state.
             for sid, (tile, color, slash_col, camp_name, name_lbl, god_lbl, checks_lbl) in self._scenario_tile_widgets.items():
@@ -347,7 +578,11 @@ class AoMManager(GameManager):
                 full_name = scen_obj.display_name if scen_obj else str(sid)
                 _num_tok, _sep, _scen_name = full_name.partition(". ")
                 # Text color: black on bright-background tiles, white elsewhere.
-                if fully_unlocked and camp_name in ("NEW_ATLANTIS", "FOTT_EGYPTIAN"):
+                # When the tile background is a bright color (FotT Egyptian /
+                # FotT Final / New Atlantis), swap text to black so it stays
+                # legible.  Only applies once fully unlocked — locked tiles
+                # are darkened enough that white text reads fine.
+                if fully_unlocked and camp_name in ("NEW_ATLANTIS", "FOTT_EGYPTIAN", "FOTT_FINAL"):
                     _c0, _c1 = "[color=000000]", "[/color]"
                     god_markup = lambda g: f"[i][color=000000]{g}[/color][/i]"
                     checks_markup = lambda s: f"[color=000000]{s}[/color]"
@@ -355,10 +590,11 @@ class AoMManager(GameManager):
                     _c0, _c1 = "", ""
                     god_markup = lambda g: f"[i]{g}[/i]"
                     checks_markup = lambda s: s
+                # Wide 2-col tiles fit the full scenario name; render it the
+                # same size as the god/checks rows below so the tile feels balanced.
                 if _sep:
                     name_line_markup = (
-                        f"[size=22][b]{_c0}{_num_tok}.{_c1}[/b][/size]"
-                        f" [size=15]{_c0}{_scen_name}{_c1}[/size]"
+                        f"[b]{_c0}{_num_tok}. {_scen_name}{_c1}[/b]"
                     )
                 else:
                     name_line_markup = f"[b]{_c0}{full_name}{_c1}[/b]"
@@ -366,7 +602,21 @@ class AoMManager(GameManager):
                 name_lbl.text = name_line_markup
 
                 god_name = scenario_to_god.get(sid)
-                god_lbl.text = god_markup(god_name) if god_name else ""
+                if god_name:
+                    # Color god name by civ.  Greek gods get a white border
+                    # (blue text on white = readable on any bg).  All other
+                    # civs get a black border so the brighter civ colors stay
+                    # legible against light tile backgrounds.
+                    _gcol = _GOD_TO_CIV_COLOR.get(god_name, "FFFFFF")
+                    god_lbl.text = f"[i][color={_gcol}]{god_name}[/color][/i]"
+                    god_lbl.outline_width = 2
+                    if _gcol == "4D4DFF":   # Greek (blue) → white border
+                        god_lbl.outline_color = (1, 1, 1, 1)
+                    else:                    # Egyptian / Norse / Atlantean → black
+                        god_lbl.outline_color = (0, 0, 0, 1)
+                else:
+                    god_lbl.text = ""
+                    god_lbl.outline_width = 0
 
                 check_info = scenario_check_counts.get(sid)
                 if check_info:
@@ -374,6 +624,104 @@ class AoMManager(GameManager):
                     checks_lbl.text = checks_markup(f"{found}/{total} checks")
                 else:
                     checks_lbl.text = ""
+
+            # --- Per-campaign progress: tab titles + Overview tab ----------
+            from ..locations.Scenarios import aomScenarioData as _SD2
+            camp_totals: dict = {}   # camp.name -> [found_checks, total_checks, beaten, scen_count, display_name]
+            for s in _SD2:
+                cn = s.campaign.name
+                if s.campaign.id in disabled_campaign_ids:
+                    continue
+                if cn not in camp_totals:
+                    camp_totals[cn] = [0, 0, 0, 0, s.campaign.campaign_name]
+                t = camp_totals[cn]
+                ci = scenario_check_counts.get(s.global_number)
+                if ci:
+                    t[0] += ci[0]
+                    t[1] += ci[1]
+                    if ci[1] > 0 and ci[0] >= ci[1]:
+                        t[2] += 1
+                t[3] += 1
+
+            # Update sub-tab titles with % + lock state.
+            for cn, (idx, short_name, camp_id) in self._campaign_subtabs.items():
+                t = camp_totals.get(cn)
+                if t and t[1] > 0:
+                    pct = t[0] * 100 // t[1]
+                    self._scenarios_tabbar.set_button_text(idx, f"{short_name}  {pct}%")
+                elif t:
+                    self._scenarios_tabbar.set_button_text(idx, f"{short_name}  0%")
+                # Mute + slash the tab if the campaign isn't unlocked yet.
+                locked = not bool(campaign_unlocked_by_id.get(camp_id, False))
+                self._scenarios_tabbar.set_tab_locked(idx, locked)
+
+            # Default to Overview on first build.
+            if self._scenarios_tabbar._buttons and \
+               all(b.state == "normal" for b in self._scenarios_tabbar._buttons):
+                self._scenarios_tabbar.select(0)
+
+            # Populate Overview tab.
+            ov = self._scenarios_overview
+            if ov is not None:
+                ov.clear_widgets()
+                ov.add_widget(Label(
+                    text="[b]Campaign Progress[/b]",
+                    markup=True, halign="center", valign="middle",
+                    size_hint_y=None, height=dp(40), font_size=dp(22),
+                ))
+                _tf = sum(t[0] for t in camp_totals.values())
+                _tt = sum(t[1] for t in camp_totals.values())
+                _tp = (_tf * 100 // _tt) if _tt > 0 else 0
+                _tb = sum(t[2] for t in camp_totals.values())
+                _ts = sum(t[3] for t in camp_totals.values())
+                _ov_row = BoxLayout(
+                    orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8),
+                )
+                _ovl = Label(text="[b]Overall[/b]", markup=True, halign="left",
+                              valign="middle", size_hint_x=0.28)
+                _ovl.bind(size=_ovl.setter("text_size"))
+                _ov_row.add_widget(_ovl)
+                _ov_row.add_widget(ProgressBar(max=100, value=_tp, size_hint_x=0.52))
+                _ovp = Label(
+                    text=f"{_tf}/{_tt} checks  •  {_tb}/{_ts} beaten  ({_tp}%)",
+                    halign="right", valign="middle", size_hint_x=0.20,
+                )
+                _ovp.bind(size=_ovp.setter("text_size"))
+                _ov_row.add_widget(_ovp)
+                ov.add_widget(_ov_row)
+
+                _sep = Label(
+                    text="[color=303030]" + ("─" * 80) + "[/color]",
+                    markup=True, halign="left", valign="middle",
+                    size_hint_y=None, height=dp(12), font_size=dp(10),
+                )
+                _sep.bind(size=_sep.setter("text_size"))
+                ov.add_widget(_sep)
+
+                for cn, t in camp_totals.items():
+                    found, tot, beaten, scen_n, disp = t
+                    pct = (found * 100 // tot) if tot > 0 else 0
+                    base = _CAMPAIGN_TILE_COLORS.get(cn, (0.7, 0.7, 0.7))
+                    hex_col = "{:02X}{:02X}{:02X}".format(
+                        int(base[0]*255), int(base[1]*255), int(base[2]*255),
+                    )
+                    row = BoxLayout(
+                        orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8),
+                    )
+                    _nm = Label(
+                        text=f"[b][color={hex_col}]{disp}[/color][/b]",
+                        markup=True, halign="left", valign="middle", size_hint_x=0.28,
+                    )
+                    _nm.bind(size=_nm.setter("text_size"))
+                    row.add_widget(_nm)
+                    row.add_widget(ProgressBar(max=100, value=pct, size_hint_x=0.52))
+                    _pl = Label(
+                        text=f"{found}/{tot} checks  •  {beaten}/{scen_n} beaten",
+                        halign="right", valign="middle", size_hint_x=0.20,
+                    )
+                    _pl.bind(size=_pl.setter("text_size"))
+                    row.add_widget(_pl)
+                    ov.add_widget(row)
 
         Clock.schedule_once(_update)
 
@@ -456,25 +804,41 @@ class AoMManager(GameManager):
     }
 
     def build_civs_tab(self) -> None:
-        """Lazy-build the Civilizations tab (called from update_civs_view)."""
+        """Lazy-build the Civilizations tab (called from update_civs_view).
+        Sub-tabs (Summary + one per civ) are added on the first update so the
+        skeleton can be torn down and rebuilt when the active-civ set changes."""
         if getattr(self, "_civs_tab", None) is not None:
             return
-        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-        outer = BoxLayout(
-            orientation="vertical", size_hint_y=None,
-            spacing=dp(10), padding=(dp(8), dp(8), dp(8), dp(8)),
+        # Top padding reduced from dp(100) so the global-missing banner can
+        # spill into the status panel area; the banner is short enough that the
+        # tab bar still aligns visually with the Scenarios tab bar below.
+        root_box = BoxLayout(
+            orientation="vertical",
+            padding=(dp(6), dp(64), dp(6), dp(4)),
+            spacing=dp(4),
         )
-        outer.bind(minimum_height=outer.setter("height"))
-        scroll.add_widget(outer)
+        # Global "items still in multiworld" banner pinned above the sub-tabs.
+        gml = Label(
+            text="", markup=True, halign="left", valign="middle",
+            size_hint_y=None, height=dp(36), font_size=dp(22),
+        )
+        gml.bind(size=gml.setter("text_size"))
+        root_box.add_widget(gml)
+
+        tabbar = _WrapTabBar(cols=4, btn_height=dp(44))
+        root_box.add_widget(tabbar)
+
         try:
-            self.add_client_tab("Civilizations", scroll)
+            self.add_client_tab("Civilizations", root_box)
         except Exception as ex:
             logging.getLogger(__name__).warning(f"Could not add Civilizations tab: {ex}")
             return
-        self._civs_tab   = scroll
-        self._civs_outer = outer
+        self._civs_tab               = root_box
+        self._civs_tabbar            = tabbar
+        self._civs_global_missing_lbl = gml
         self._civ_section_widgets: dict = {}
-        self._civs_global_missing_lbl = None
+        self._civ_subtab_index: dict  = {}   # civ -> int (button index)
+        self._civs_summary_box        = None
 
     def update_civs_view(
         self,
@@ -513,7 +877,7 @@ class AoMManager(GameManager):
             from collections import Counter
 
             self.build_civs_tab()
-            if not hasattr(self, "_civs_outer"):
+            if not hasattr(self, "_civs_tabbar"):
                 return
 
             counts     = Counter(received_ids)
@@ -613,28 +977,37 @@ class AoMManager(GameManager):
             global_missing  = global_in_seed - global_received
 
             # --- Skeleton build (once per active-civ set) ----------------------
-            cached_civs = set(self._civ_section_widgets.keys())
+            cached_civs = set(k for k in self._civ_section_widgets.keys() if k != "_summary_")
             if cached_civs != set(active_civs):
-                self._civs_outer.clear_widgets()
-                self._civ_section_widgets  = {}
-                self._civs_global_missing_lbl = None
+                self._civs_tabbar.clear_tabs()
+                self._civ_section_widgets = {}
+                self._civ_subtab_index    = {}
+                self._civs_summary_box    = None
 
-                # --- Global missing header (above Generic) ---
-                gml = Label(
-                    text="", markup=True, halign="left", valign="middle",
-                    size_hint_y=None, height=dp(41), font_size=dp(29),
+                # --- Summary tab (default) ---
+                summary_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                summary_box    = BoxLayout(
+                    orientation="vertical", size_hint_y=None,
+                    spacing=dp(6), padding=(dp(8), dp(8), dp(8), dp(8)),
                 )
-                gml.bind(size=gml.setter("text_size"))
-                self._civs_outer.add_widget(gml)
-                self._civs_global_missing_lbl = gml
+                summary_box.bind(minimum_height=summary_box.setter("height"))
+                summary_scroll.add_widget(summary_box)
+                self._civs_tabbar.add_tab("Summary", (0.35, 0.35, 0.35, 0.7), summary_scroll)
+                self._civs_summary_box = summary_box
+                self._civ_section_widgets["_summary_"] = {"section": summary_box}
 
+                # --- One tab per active civ ---
                 for civ in active_civs:
                     hdr_hex = self._CIV_HEADER_HEX.get(civ, "AAAAAA")
-
+                    scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
                     section = BoxLayout(
-                        orientation="vertical", size_hint_y=None, spacing=dp(1),
+                        orientation="vertical", size_hint_y=None,
+                        spacing=dp(1), padding=(dp(8), dp(8), dp(8), dp(8)),
                     )
                     section.bind(minimum_height=section.setter("height"))
+                    scroll.add_widget(section)
+                    idx = self._civs_tabbar.add_tab(civ, _hex_rgba(hdr_hex, 0.7), scroll)
+                    self._civ_subtab_index[civ] = idx
 
                     header = Label(
                         text=f"[b][color={hdr_hex}]{civ}[/color][/b]",
@@ -644,7 +1017,6 @@ class AoMManager(GameManager):
                     header.bind(size=header.setter("text_size"))
                     section.add_widget(header)
 
-                    # Age progress row (civ sections only)
                     age_lbl = None
                     if civ != "Generic":
                         age_lbl = Label(
@@ -654,28 +1026,20 @@ class AoMManager(GameManager):
                         age_lbl.bind(size=age_lbl.setter("text_size"))
                         section.add_widget(age_lbl)
 
-                    # Item-rows container (cleared and rebuilt each update)
                     items_box = BoxLayout(
                         orientation="vertical", size_hint_y=None, spacing=dp(0),
                     )
                     items_box.bind(minimum_height=items_box.setter("height"))
                     section.add_widget(items_box)
 
-                    # Thin decorative separator
-                    sep = Label(
-                        text="[color=252525]" + ("\u2500" * 80) + "[/color]",
-                        markup=True, halign="left", valign="middle",
-                        size_hint_y=None, height=dp(12), font_size=dp(10),
-                    )
-                    sep.bind(size=sep.setter("text_size"))
-                    section.add_widget(sep)
-
-                    self._civs_outer.add_widget(section)
                     self._civ_section_widgets[civ] = {
                         "section":   section,
                         "age_lbl":   age_lbl,
                         "items_box": items_box,
                     }
+
+                # Default to Summary tab
+                self._civs_tabbar.select(0)
 
             # --- Update global missing label -------------------------------------
             if self._civs_global_missing_lbl is not None:
@@ -714,26 +1078,49 @@ class AoMManager(GameManager):
                     f"[color={icon_col}]    {icon}[/color] [color={col}]{display_name}[/color]"
                 )
 
+            # Per-civ strength for Summary tab + sub-tab titles.
+            strength: dict = {}
+
             for civ, refs in self._civ_section_widgets.items():
+                if civ == "_summary_":
+                    continue
                 ib      = refs["items_box"]
                 age_ref = refs["age_lbl"]
                 ib.clear_widgets()
 
+                # Compute received/total for tab title + Summary bars.
+                if civ == "Generic":
+                    _civset = _generic_items_all()
+                else:
+                    _civset = _civ_items_all(civ)
+                _civ_total = sum(1 for it in _civset if not isinstance(it.type, _SKIP_TYPES))
+                _civ_recv  = sum(1 for it in _civset
+                                  if not isinstance(it.type, _SKIP_TYPES)
+                                  and counts.get(it.id, 0) > 0)
+                _civ_pct   = (_civ_recv * 100 // _civ_total) if _civ_total > 0 else 0
+                strength[civ] = (_civ_recv, _civ_total, _civ_pct)
+
+                # Update sub-tab title with %.
+                _idx = self._civ_subtab_index.get(civ)
+                if _idx is not None:
+                    self._civs_tabbar.set_button_text(_idx, f"{civ} {_civ_pct}%")
+
                 if civ == "Generic":
                     # ---- Generic: received non-civ items grouped by category ----
                     all_gen = _generic_items_all()
+                    # (group_name, types, header_hex_color)
                     _GEN_GROUPS = [
-                        ("Starting Resources",  (StartingResources, StartingResourcesLarge)),
-                        ("Passive Income",       (PassiveIncome, PassiveIncomeLarge)),
-                        ("Relic Trickles",       (RelicTrickle,)),
-                        ("Relic Effects",        (RelicEffect,)),
-                        ("Reinforcements",       (Reinforcement, ReinforcementUseful)),
-                        ("Unit Stat Bonuses",    (UnitStatBonus,)),
-                        ("Villager Discounts",   (GenericVillagerDiscount,)),
+                        ("Starting Resources",  (StartingResources, StartingResourcesLarge),   "FFD24D"),
+                        ("Passive Income",       (PassiveIncome, PassiveIncomeLarge),           "55DD66"),
+                        ("Relic Trickles",       (RelicTrickle,),                                "55C8E6"),
+                        ("Relic Effects",        (RelicEffect,),                                 "C088FF"),
+                        ("Reinforcements",       (Reinforcement, ReinforcementUseful),           "FF9933"),
+                        ("Unit Stat Bonuses",    (UnitStatBonus,),                               "FF6F6F"),
+                        ("Villager Discounts",   (GenericVillagerDiscount,),                     "B8E04D"),
                         ("Starting Techs",       (StartingEconomyTech, StartingMilitaryTech,
-                                                  StartingDockTech, StartingBuildingsTech)),
+                                                  StartingDockTech, StartingBuildingsTech),     "4DBFFF"),
                     ]
-                    for grp_name, grp_types in _GEN_GROUPS:
+                    for grp_name, grp_types, hdr_col in _GEN_GROUPS:
                         grp = [
                             (it, counts.get(it.id, 0)) for it in all_gen
                             if isinstance(it.type, grp_types)
@@ -741,26 +1128,26 @@ class AoMManager(GameManager):
                         ]
                         if not grp:
                             continue
-                        ib.add_widget(_subhdr(grp_name))
+                        ib.add_widget(_subhdr(grp_name, color=hdr_col))
                         for it, n in grp:
                             sfx = f" [color=AAAAAA]x{n}[/color]" if n > 1 else ""
                             ib.add_widget(
                                 _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]{sfx}")
                             )
 
-                    # Hero Items: Arkantos first, then other heroes alphabetically.
-                    # No group sub-header; hero name acts as implicit separator.
+                    # Hero Items: one sub-header per hero, Arkantos first then
+                    # alphabetical.  Different gold shade so heroes stand out
+                    # from category sub-headers above.
                     _HERO_TYPES = (HeroStatBoost, HeroStatBoostFiller,
                                    HeroSpecialEffect, HeroActionBoost, ArkantosHousing)
                     hero_items_all = [
                         it for it in all_gen
                         if isinstance(it.type, _HERO_TYPES)
+                        and counts.get(it.id, 0) > 0
                     ]
                     if hero_items_all:
                         def _hero_name(it):
                             if isinstance(it.type, ArkantosHousing):
-                                # Both Arkantos and Kastor reuse ArkantosHousing;
-                                # distinguish by item name prefix.
                                 return "Kastor" if it.item_name.startswith("Kastor") else "Arkantos"
                             h = getattr(it.type, "hero", "") or ""
                             return h[:-3] if h.endswith("SPC") else h
@@ -768,10 +1155,14 @@ class AoMManager(GameManager):
                             h = _hero_name(it)
                             return (0, it.item_name) if h == "Arkantos" else (1, h, it.item_name)
                         hero_items_all.sort(key=_hero_sort_key)
-                        ib.add_widget(_subhdr("Hero Items"))
+                        # Group by hero, emit subheader per hero.
+                        _last_hero = None
+                        _HERO_HEX = "F2C84A"   # warm gold for hero subheaders
                         for it in hero_items_all:
-                            if counts.get(it.id, 0) == 0:
-                                continue
+                            h = _hero_name(it)
+                            if h != _last_hero:
+                                ib.add_widget(_subhdr(h, color=_HERO_HEX))
+                                _last_hero = h
                             ib.add_widget(
                                 _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]")
                             )
@@ -844,7 +1235,266 @@ class AoMManager(GameManager):
                                 _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]")
                             )
 
+            # --- Summary sub-tab: per-civ strength bars + overall ----------
+            sb = self._civs_summary_box
+            if sb is not None:
+                sb.clear_widgets()
+                sb.add_widget(Label(
+                    text="[b]Civilization Strength[/b]",
+                    markup=True, halign="center", valign="middle",
+                    size_hint_y=None, height=dp(40), font_size=dp(22),
+                ))
+                # Overall = sum across civs.
+                _tot_recv = sum(s[0] for s in strength.values())
+                _tot_all  = sum(s[1] for s in strength.values())
+                _tot_pct  = (_tot_recv * 100 // _tot_all) if _tot_all > 0 else 0
+                _overall = BoxLayout(
+                    orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8),
+                )
+                _ovl_lbl = Label(
+                    text="[b]Overall[/b]", markup=True, halign="left", valign="middle",
+                    size_hint_x=0.28,
+                )
+                _ovl_lbl.bind(size=_ovl_lbl.setter("text_size"))
+                _overall.add_widget(_ovl_lbl)
+                _overall.add_widget(ProgressBar(max=100, value=_tot_pct, size_hint_x=0.52))
+                _ovl_pct = Label(
+                    text=f"{_tot_recv}/{_tot_all}  ({_tot_pct}%)",
+                    halign="right", valign="middle", size_hint_x=0.20,
+                )
+                _ovl_pct.bind(size=_ovl_pct.setter("text_size"))
+                _overall.add_widget(_ovl_pct)
+                sb.add_widget(_overall)
+
+                # Thin separator.
+                _sep = Label(
+                    text="[color=303030]" + ("\u2500" * 80) + "[/color]",
+                    markup=True, halign="left", valign="middle",
+                    size_hint_y=None, height=dp(12), font_size=dp(10),
+                )
+                _sep.bind(size=_sep.setter("text_size"))
+                sb.add_widget(_sep)
+
+                for civ in active_civs:
+                    recv, tot, pct = strength.get(civ, (0, 0, 0))
+                    hdr_hex = self._CIV_HEADER_HEX.get(civ, "AAAAAA")
+
+                    # Compute reachable-age and trainable-unit count for this civ.
+                    # age_count caps at 3 (Mythic).  Trainable units = received
+                    # UnitUnlock items (both regular and Atlantean variants).
+                    if civ == "Generic":
+                        # No age / trainable concept for Generic — skip extra rows.
+                        _age_idx     = -1
+                        _train_count = -1
+                    else:
+                        _aitem = _get_age_item(civ)
+                        _age_idx = min(counts.get(_aitem.id, 0), 3) if _aitem else 0
+                        _train_count = sum(
+                            1 for it in _civ_items_all(civ)
+                            if isinstance(it.type, _UNIT_TYPES)
+                            and counts.get(it.id, 0) > 0
+                        )
+
+                    # Main row: name + bar + counts.
+                    row = BoxLayout(
+                        orientation="horizontal", size_hint_y=None, height=dp(36), spacing=dp(8),
+                    )
+                    _name = Label(
+                        text=f"[b][color={hdr_hex}]{civ}[/color][/b]",
+                        markup=True, halign="left", valign="middle", size_hint_x=0.28,
+                    )
+                    _name.bind(size=_name.setter("text_size"))
+                    row.add_widget(_name)
+                    row.add_widget(ProgressBar(max=100, value=pct, size_hint_x=0.52))
+                    _pct_lbl = Label(
+                        text=f"{recv}/{tot}  ({pct}%)",
+                        halign="right", valign="middle", size_hint_x=0.20,
+                    )
+                    _pct_lbl.bind(size=_pct_lbl.setter("text_size"))
+                    row.add_widget(_pct_lbl)
+                    sb.add_widget(row)
+
+                    # Indented age + trainable rows.
+                    if _age_idx >= 0:
+                        _age_name = self._AGE_NAMES[_age_idx]
+                        _age_hex  = self._AGE_HEX[_age_idx]
+                        age_row = Label(
+                            text=f"      [b][color={_age_hex}]{_age_name} Age[/color][/b]",
+                            markup=True, halign="left", valign="middle",
+                            size_hint_y=None, height=dp(22), font_size=dp(15),
+                        )
+                        age_row.bind(size=age_row.setter("text_size"))
+                        sb.add_widget(age_row)
+
+                        train_row = Label(
+                            text=f"      [color=DDDDDD]{_train_count} Trainable Unit"
+                                 f"{'' if _train_count == 1 else 's'}[/color]",
+                            markup=True, halign="left", valign="middle",
+                            size_hint_y=None, height=dp(22), font_size=dp(15),
+                        )
+                        train_row.bind(size=train_row.setter("text_size"))
+                        sb.add_widget(train_row)
+
+                    # Small gap between civ entries.
+                    _gap = Label(text="", size_hint_y=None, height=dp(6))
+                    sb.add_widget(_gap)
+
+                # Re-render Summary as 2-up grid (overwrites the per-civ rows
+                # written above so we keep one canonical layout path).  Done as
+                # a clear + rebuild so existing strength/_age_idx logic above
+                # still computes for the per-civ tabs.
+                self._build_summary_grid(sb, strength, active_civs, counts,
+                                          _get_age_item, _civ_items_all,
+                                          _UNIT_TYPES, _MYTH_TYPES)
+
         Clock.schedule_once(_update)
+
+    # -------------------------------------------------------------------------
+    # Civ Summary grid builder
+    # -------------------------------------------------------------------------
+    # Lays out the Summary sub-tab as a 2-column grid of cells, one cell per
+    # civ + an "Overall" cell (top-left) and a "Generic" cell (top-right).
+    # Each cell shows: civ name (in civ color), max reachable age (in age
+    # color), trainable unit count (human-soldier + myth-unit items), and a
+    # progress bar with x/n.  When new civilizations are added to
+    # `_CIV_ORDER` / `_CIV_HEADER_HEX`, this grid auto-extends — each new civ
+    # becomes another cell at the bottom.
+    # -------------------------------------------------------------------------
+    def _build_summary_grid(self, sb, strength, active_civs, counts,
+                             _get_age_item, _civ_items_all,
+                             _UNIT_TYPES, _MYTH_TYPES) -> None:
+        sb.clear_widgets()
+
+        # Assemble entries: (label, hex, age_idx_or_-1, train_count_or_-1, recv, tot).
+        entries: list = []
+        _tot_recv = sum(s[0] for s in strength.values())
+        _tot_all  = sum(s[1] for s in strength.values())
+        entries.append(("Overall", "DDDDDD", -1, -1, _tot_recv, _tot_all))
+
+        # Generic shares the top row with Overall.
+        if "Generic" in strength:
+            g_recv, g_tot, _ = strength["Generic"]
+            entries.append((
+                "Generic", self._CIV_HEADER_HEX.get("Generic", "FF4444"),
+                -1, -1, g_recv, g_tot,
+            ))
+
+        for civ in active_civs:
+            if civ == "Generic":
+                continue
+            recv, tot, _ = strength.get(civ, (0, 0, 0))
+            hdr_hex = self._CIV_HEADER_HEX.get(civ, "AAAAAA")
+            _aitem = _get_age_item(civ)
+            _age_idx = min(counts.get(_aitem.id, 0), 3) if _aitem else 0
+            # Trainable = human-soldier unlock items + myth-unit-tier unlock
+            # items received.  E.g. Greek with Hoplite + Peltast + Classical/
+            # Heroic/Mythic Myth Units = 5.
+            _train = sum(
+                1 for it in _civ_items_all(civ)
+                if isinstance(it.type, _UNIT_TYPES + _MYTH_TYPES)
+                and counts.get(it.id, 0) > 0
+            )
+            entries.append((civ, hdr_hex, _age_idx, _train, recv, tot))
+
+        grid = GridLayout(
+            cols=2, size_hint_y=None,
+            spacing=(dp(24), dp(16)),
+            padding=(dp(8), dp(4), dp(8), dp(4)),
+        )
+        grid.bind(minimum_height=grid.setter("height"))
+
+        def _make_cell(label_text, color_hex, age_idx, train_count, recv, tot, col_idx, row_idx, last_row):
+            cell = BoxLayout(
+                orientation="vertical", size_hint_y=None,
+                spacing=dp(2), padding=(dp(10), dp(8), dp(10), dp(10)),
+            )
+            cell.bind(minimum_height=cell.setter("height"))
+            # Dividers: right edge for left-column cells, bottom edge for
+            # non-last-row cells.  Drawn on canvas.after so they sit above the
+            # cell background but below any child labels.
+            with cell.canvas.after:
+                _div_col = Color(0.45, 0.45, 0.45, 0.5)
+                _right   = Line(points=[0, 0, 0, 0], width=1.4)
+                _bottom  = Line(points=[0, 0, 0, 0], width=1.4)
+            def _redraw(*_):
+                pad = dp(6)
+                # Right divider only on left column (col_idx == 0).
+                if col_idx == 0:
+                    _right.points = [
+                        cell.right + dp(12), cell.y + pad,
+                        cell.right + dp(12), cell.top - pad,
+                    ]
+                else:
+                    _right.points = [0, 0, 0, 0]
+                # Bottom divider on every row except the last.
+                if not last_row:
+                    _bottom.points = [
+                        cell.x + pad,           cell.y - dp(8),
+                        cell.right - pad,       cell.y - dp(8),
+                    ]
+                else:
+                    _bottom.points = [0, 0, 0, 0]
+            cell.bind(pos=_redraw, size=_redraw)
+            # Initial layout pass may not yet have correct cell pos/size when
+            # this binding runs; schedule a redraw on the next Clock tick so
+            # divider lines land in the right place without needing a window
+            # resize to trigger pos/size events.
+            Clock.schedule_once(_redraw, 0)
+            Clock.schedule_once(_redraw, 0.05)
+            _nm = Label(
+                text=f"[b][color={color_hex}]{label_text}[/color][/b]",
+                markup=True, halign="left", valign="middle",
+                size_hint_y=None, height=dp(28), font_size=dp(18),
+            )
+            _nm.bind(size=_nm.setter("text_size"))
+            cell.add_widget(_nm)
+            if age_idx >= 0:
+                _ahex  = self._AGE_HEX[age_idx]
+                _aname = self._AGE_NAMES[age_idx]
+                _age = Label(
+                    text=f"[b][color={_ahex}]{_aname} Age[/color][/b]",
+                    markup=True, halign="left", valign="middle",
+                    size_hint_y=None, height=dp(22), font_size=dp(15),
+                )
+                _age.bind(size=_age.setter("text_size"))
+                cell.add_widget(_age)
+            if train_count >= 0:
+                _tr = Label(
+                    text=f"[color=DDDDDD]{train_count} Trainable Unit"
+                         f"{'' if train_count == 1 else 's'}[/color]",
+                    markup=True, halign="left", valign="middle",
+                    size_hint_y=None, height=dp(22), font_size=dp(15),
+                )
+                _tr.bind(size=_tr.setter("text_size"))
+                cell.add_widget(_tr)
+            bar_row = BoxLayout(
+                orientation="horizontal", size_hint_y=None,
+                height=dp(22), spacing=dp(6),
+            )
+            bar_row.add_widget(ProgressBar(
+                max=tot if tot > 0 else 1, value=recv, size_hint_x=0.65,
+            ))
+            _cnt = Label(
+                text=f"{recv}/{tot}", halign="right", valign="middle",
+                size_hint_x=0.35, font_size=dp(14),
+            )
+            _cnt.bind(size=_cnt.setter("text_size"))
+            bar_row.add_widget(_cnt)
+            cell.add_widget(bar_row)
+            return cell
+
+        # Determine the last row index for the "no bottom divider" rule.
+        n_cells   = len(entries)
+        n_rows    = (n_cells + 1) // 2
+        for i, entry in enumerate(entries):
+            col_idx  = i % 2
+            row_idx  = i // 2
+            last_row = (row_idx == n_rows - 1)
+            grid.add_widget(_make_cell(*entry, col_idx, row_idx, last_row))
+        if n_cells % 2 == 1:
+            # Pad with an empty placeholder so the bottom row stays balanced.
+            grid.add_widget(BoxLayout(size_hint_y=None, height=dp(1)))
+        sb.add_widget(grid)
 
     # -------------------------------------------------------------------------
     # Relics Tab
@@ -862,16 +1512,20 @@ class AoMManager(GameManager):
     def build_relics_tab(self) -> None:
         """Eagerly build the Relics tab.  Always called from on_start() so the
         tab exists in the nav bar from launch.  Content is populated by
-        update_relics_view() once slot_data is received.  If relicsanity is
-        disabled in the seed a placeholder message is shown instead."""
+        update_relics_view() once slot_data is received.
+
+        Layout mirrors the Scenarios tab: a _WrapTabBar of campaign sub-tabs
+        (color-coded with _RELIC_CAMPAIGN_HEX) sits at the top, each tab
+        contains a ScrollView listing every relic location for that campaign.
+        Adding a new campaign just means adding it to _RELIC_CAMPAIGN_HEX and
+        ensuring SCENARIO_TO_LOCATIONS / aomCampaignData expose its scenarios."""
         if getattr(self, "_relics_tab", None) is not None:
             return
-        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-        outer = BoxLayout(
-            orientation="vertical", size_hint_y=None,
-            spacing=dp(6), padding=(dp(8), dp(8), dp(8), dp(8)),
+        root_box = BoxLayout(
+            orientation="vertical",
+            padding=(dp(6), dp(100), dp(6), dp(4)),  # top pad clears status panel
+            spacing=dp(4),
         )
-        outer.bind(minimum_height=outer.setter("height"))
         # Placeholder shown before slot_data arrives or when relicsanity is off
         placeholder = Label(
             text="[color=666666]Relicsanity is not enabled for this seed.[/color]",
@@ -879,18 +1533,23 @@ class AoMManager(GameManager):
             size_hint_y=None, height=dp(40), font_size=dp(18),
         )
         placeholder.bind(size=placeholder.setter("text_size"))
-        outer.add_widget(placeholder)
-        scroll.add_widget(outer)
+        root_box.add_widget(placeholder)
+
+        tabbar = _WrapTabBar(cols=4, btn_height=dp(44))
+        root_box.add_widget(tabbar)
+
         try:
-            self.add_client_tab("Relics", scroll)
+            self.add_client_tab("Relics", root_box)
         except Exception as ex:
             logging.getLogger(__name__).warning(f"Could not add Relics tab: {ex}")
             return
-        self._relics_tab         = scroll
-        self._relics_outer       = outer
+        self._relics_tab         = root_box
+        self._relics_tabbar      = tabbar
         self._relics_placeholder = placeholder
         # loc_id -> Label widget so we can update only the text on refresh
         self._relic_row_widgets: dict = {}
+        # campaign.name -> (tab_index, campaign.id) for lock-state updates.
+        self._relic_campaign_subtabs: dict = {}
         self._relics_built = False
 
     def update_relics_view(
@@ -898,6 +1557,7 @@ class AoMManager(GameManager):
         relicsanity: bool,
         checked_locs: set,
         disabled_campaign_ids: set,
+        campaign_unlocked_by_id: dict = None,
     ) -> None:
         """Refresh the Relics tab.
 
@@ -916,7 +1576,7 @@ class AoMManager(GameManager):
                 return
             # Relicsanity is on: hide the placeholder if it is still there.
             if hasattr(self, "_relics_placeholder") and self._relics_placeholder.parent:
-                self._relics_outer.remove_widget(self._relics_placeholder)
+                self._relics_tab.remove_widget(self._relics_placeholder)
 
             from ..locations.Locations import (
                 aomLocationData, aomLocationType, SCENARIO_TO_LOCATIONS,
@@ -925,14 +1585,14 @@ class AoMManager(GameManager):
             from ..locations.Campaigns import aomCampaignData
 
             self.build_relics_tab()
-            if not hasattr(self, "_relics_outer"):
+            if not hasattr(self, "_relics_tabbar"):
                 return
 
             # ---- Build skeleton once ----------------------------------------
             if not self._relics_built:
                 self._relics_built = True
                 self._relic_row_widgets = {}
-                self._relics_outer.clear_widgets()
+                self._relics_tabbar.clear_tabs()
 
                 # Collect all RELIC locations, grouped by campaign then scenario.
                 # Preserve the natural enum order throughout.
@@ -947,27 +1607,28 @@ class AoMManager(GameManager):
                 for campaign, scenario_groups in by_campaign.items():
                     if campaign.id in disabled_campaign_ids:
                         continue
-
                     camp_hex = self._RELIC_CAMPAIGN_HEX.get(campaign.name, "AAAAAA")
+                    _short = campaign.campaign_name.replace("Fall of the Trident", "FotT")
 
-                    # Campaign header
-                    camp_lbl = Label(
-                        text=f"[b][color={camp_hex}]{campaign.campaign_name}[/color][/b]",
-                        markup=True, halign="left", valign="middle",
-                        size_hint_y=None, height=dp(41), font_size=dp(29),
+                    # Per-campaign ScrollView + content box.
+                    scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                    content = BoxLayout(
+                        orientation="vertical", size_hint_y=None,
+                        spacing=dp(2), padding=(dp(6), dp(6), dp(6), dp(6)),
                     )
-                    camp_lbl.bind(size=camp_lbl.setter("text_size"))
-                    self._relics_outer.add_widget(camp_lbl)
+                    content.bind(minimum_height=content.setter("height"))
+                    scroll.add_widget(content)
+                    _ridx = self._relics_tabbar.add_tab(_short, _hex_rgba(camp_hex, 0.7), scroll)
+                    self._relic_campaign_subtabs[campaign.name] = (_ridx, campaign.id)
 
                     for scenario, relic_locs in scenario_groups:
-                        # Scenario sub-header
                         scen_lbl = Label(
-                            text=f"[b][color=CCCCCC]  {scenario.display_name}[/color][/b]",
+                            text=f"[b][color={camp_hex}]{scenario.display_name}[/color][/b]",
                             markup=True, halign="left", valign="middle",
-                            size_hint_y=None, height=dp(26), font_size=dp(17),
+                            size_hint_y=None, height=dp(28), font_size=dp(18),
                         )
                         scen_lbl.bind(size=scen_lbl.setter("text_size"))
-                        self._relics_outer.add_widget(scen_lbl)
+                        content.add_widget(scen_lbl)
 
                         for loc in relic_locs:
                             row_lbl = Label(
@@ -976,17 +1637,29 @@ class AoMManager(GameManager):
                                 size_hint_y=None, height=dp(23), font_size=dp(16),
                             )
                             row_lbl.bind(size=row_lbl.setter("text_size"))
-                            self._relics_outer.add_widget(row_lbl)
+                            content.add_widget(row_lbl)
                             self._relic_row_widgets[loc.id] = (row_lbl, loc.location_name)
 
-                        # Thin separator after each scenario block
                         sep = Label(
                             text="[color=252525]" + ("\u2500" * 80) + "[/color]",
                             markup=True, halign="left", valign="middle",
                             size_hint_y=None, height=dp(10), font_size=dp(9),
                         )
                         sep.bind(size=sep.setter("text_size"))
-                        self._relics_outer.add_widget(sep)
+                        content.add_widget(sep)
+
+                # Hide the placeholder once we have tabs.
+                if hasattr(self, "_relics_placeholder") and self._relics_placeholder.parent:
+                    self._relics_tab.remove_widget(self._relics_placeholder)
+                # Default to first campaign tab.
+                if self._relics_tabbar._buttons:
+                    self._relics_tabbar.select(0)
+
+            # ---- Update campaign-tab lock state on every call ----------------
+            _unlock_map = campaign_unlocked_by_id or {}
+            for cn, (idx, camp_id) in self._relic_campaign_subtabs.items():
+                locked = not bool(_unlock_map.get(camp_id, False))
+                self._relics_tabbar.set_tab_locked(idx, locked)
 
             # ---- Update checkmark state on every call -----------------------
             for loc_id, (row_lbl, loc_name) in self._relic_row_widgets.items():

@@ -157,6 +157,7 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     EgyptianMajorGods,
     NorseMajorGods,
     AtlanteanMajorGods,
+    MoreFrequentDLCGods,
     NewAtlantis,
     GoldenGift,
     Relicsanity,
@@ -205,6 +206,7 @@ class aomWebWorld(WebWorld):
             EgyptianMajorGods,
             NorseMajorGods,
             AtlanteanMajorGods,
+            MoreFrequentDLCGods,
             UpdateBuildingsForRandomGod,
         ]),
         OptionGroup("Starting Setup", [
@@ -244,9 +246,9 @@ _VANILLA_GODS: dict = {
     # The Golden Gift (APScenarioIDs 601-604)
     601: 8, 602: 9, 603: 9, 604: 8,
 }
-_GREEK_GODS      = frozenset({1, 2, 3})
+_GREEK_GODS      = frozenset({1, 2, 3, 13})
 _EGYPTIAN_GODS   = frozenset({4, 5, 6})
-_NORSE_GODS      = frozenset({7, 8, 9})
+_NORSE_GODS      = frozenset({7, 8, 9, 14})
 _ATLANTEAN_GODS  = frozenset({10, 11, 12})  # Kronos, Oranos, Gaia
 _ALL_GODS        = _GREEK_GODS | _EGYPTIAN_GODS | _NORSE_GODS
 _ALL_GODS_WITH_ATLANTIS = _ALL_GODS | _ATLANTEAN_GODS
@@ -255,6 +257,7 @@ _GOD_NAMES     = {
     4: "Isis",   5: "Ra",       6: "Set",
     7: "Odin",   8: "Thor",     9: "Loki",
     10: "Kronos", 11: "Oranos", 12: "Gaia",
+    13: "Demeter", 14: "Freyr",
 }
 
 def _civ_of_god(god: int) -> frozenset:
@@ -310,6 +313,12 @@ _MINOR_GOD_TECHS: dict[tuple, list] = {
     (9,1): ["cTechClassicalAgeForseti", "cTechClassicalAgeHeimdall"],
     (9,2): ["cTechHeroicAgeBragi",      "cTechHeroicAgeNjord"],
     (9,3): ["cTechMythicAgeTyr",        "cTechMythicAgeHel"],
+    (13,1): ["cTechClassicalAgeAres",   "cTechClassicalAgePan"],
+    (13,2): ["cTechHeroicAgeAphrodite", "cTechHeroicAgeHestia"],
+    (13,3): ["cTechMythicAgeHera",      "cTechMythicAgePersephone"],
+    (14,1): ["cTechClassicalAgeUllr",   "cTechClassicalAgeFreyja"],
+    (14,2): ["cTechHeroicAgeAegir",     "cTechHeroicAgeBragi"],
+    (14,3): ["cTechMythicAgeVidar",     "cTechMythicAgeHel"],
     (10,1): ["cTechClassicalAgePrometheus", "cTechClassicalAgeLeto"],
     (10,2): ["cTechHeroicAgeHyperion",      "cTechHeroicAgeRheia"],
     (10,3): ["cTechMythicAgeHelios",        "cTechMythicAgeAtlas"],
@@ -453,9 +462,10 @@ _SPHERE_ONE_BY_CAMPAIGN: dict[str, list[int]] = {
 
 # Units specific to a particular Greek major god (not available to other Greek gods)
 _GOD_SPECIFIC_ARCHAIC_UNITS: dict[int, list] = {
-    1: ["Jason"],    # Zeus
-    2: ["Theseus"],  # Poseidon
-    3: ["Ajax"],     # Hades
+    1: ["Jason", "Myrmidon"],          # Zeus
+    2: ["Theseus", "Hetairos"],        # Poseidon
+    3: ["Ajax", "Gastraphetoros"],     # Hades
+    13: ["Orpheus", "Iolaus", "Icarus", "Midas", "AmazonArcher", "HarpyMyth"],  # Demeter
 }
 
 # Civ-wide archaic units (available for any major god of that civ)
@@ -584,7 +594,7 @@ class aomWorld(World):
 
         # Compute excluded civilizations from per-pantheon boolean options.
         # Only applies when random_major_gods is enabled.
-        _CIV_GODS = {"Greek": {1,2,3}, "Egyptian": {4,5,6}, "Norse": {7,8,9}, "Atlantean": {10,11,12}}
+        _CIV_GODS = {"Greek": set(_GREEK_GODS), "Egyptian": set(_EGYPTIAN_GODS), "Norse": set(_NORSE_GODS), "Atlantean": set(_ATLANTEAN_GODS)}
         if _rmg_on:
             self.excluded_civs: frozenset[str] = frozenset(
                 civ for civ, opt in [
@@ -604,7 +614,7 @@ class aomWorld(World):
                 )
         else:
             self.excluded_civs = frozenset()
-        self._allowed_god_ids: set[int] = set(range(1, 13)) - {
+        self._allowed_god_ids: set[int] = set(_ALL_GODS_WITH_ATLANTIS) - {
             g for civ in self.excluded_civs for g in _CIV_GODS.get(civ, set())
         }
 
@@ -685,6 +695,45 @@ class aomWorld(World):
         max_adv = int(self.options.max_advancement_items_in_each_shop.value)
         max_adv = max(0, min(ITEMS_PER_SHOP, max_adv))
 
+        # Gem-shop softlock guard.  Only relevant when gem_shop is on (this
+        # function is only called in that case).  When shops are
+        # immediately accessible and scenario keys form tiny bundles,
+        # advancement items in shops can be paid for in the wrong order
+        # and soft-lock the seed.  We have two layers:
+        #   * Hard clamp — auto-zero advancement-in-shops on the worst
+        #     combination, so the seed stays solvable no matter how the
+        #     player spends gems.  Scenario keys must be enabled
+        #     (unlock_sets_of_scenarios > 0) for this branch to apply;
+        #     a value of 0 disables scenario keys entirely and removes
+        #     that specific softlock vector.
+        #   * Advisory warning — emit on a looser set of risky combos so
+        #     players get a heads-up without forcing a behaviour change.
+        wins_to_open = int(self.options.wins_to_open_shop.value)
+        sk_bundles   = int(self.options.unlock_sets_of_scenarios.value)
+        if max_adv > 0:
+            if wins_to_open <= 1 and 0 < sk_bundles <= 2:
+                logger.warning(
+                    "AoMR: gem-shop softlock risk detected "
+                    f"(wins_to_open_shop={wins_to_open}, "
+                    f"unlock_sets_of_scenarios={sk_bundles}, "
+                    f"max_advancement_items_in_each_shop={max_adv}). "
+                    "With shops opening immediately and tiny scenario-key "
+                    "bundles, gems spent on the wrong shop slots can "
+                    "soft-lock the seed. Auto-clamping "
+                    "max_advancement_items_in_each_shop to 0."
+                )
+                max_adv = 0
+            elif wins_to_open <= 2 or 0 < sk_bundles <= 3:
+                logger.warning(
+                    "AoMR: gem-shop softlock risk "
+                    f"(wins_to_open_shop={wins_to_open}, "
+                    f"unlock_sets_of_scenarios={sk_bundles}, "
+                    f"max_advancement_items_in_each_shop={max_adv}). "
+                    "Shops open quickly and/or scenario-key bundles are "
+                    "small. Spending gems on the wrong advancement slots "
+                    "may soft-lock progress. Generation continues."
+                )
+
         for tier_name, _display, item_obs, _hint_obs in SHOP_TIER_CONFIGS:
             locs = list(TIER_ITEM_IDS[tier_name])  # 15 location IDs for this tier
             self.random.shuffle(locs)
@@ -720,8 +769,11 @@ class aomWorld(World):
 
     def _generate_god_assignments(self) -> dict[int, int]:
         """Randomly assign a major god to each scenario using the world seed.
-        Respects self._allowed_god_ids to exclude disabled civilizations."""
-        force = bool(self.options.force_different_god.value)
+        Respects self._allowed_god_ids to exclude disabled civilizations.
+        When more_frequent_dlc_gods is enabled, biases each Greek pick toward
+        Demeter (id 13) and each Norse pick toward Freyr (id 14) at 50%."""
+        force    = bool(self.options.force_different_god.value)
+        dlc_bias = bool(self.options.more_frequent_dlc_gods.value)
         allowed = frozenset(self._allowed_god_ids)
         assignments: dict[int, int] = {}
         # Iterate all scenario IDs that have vanilla god assignments:
@@ -740,8 +792,33 @@ class aomWorld(World):
                 candidates = list(allowed)
             if not candidates:
                 candidates = [vanilla]  # absolute fallback
-            assignments[scenario_id] = self.random.choice(candidates)
+            assignments[scenario_id] = self._weighted_god_choice(candidates, dlc_bias)
         return assignments
+
+    def _weighted_god_choice(self, candidates: list, dlc_bias: bool = False) -> int:
+        """Pick one god from `candidates`. When `dlc_bias` is on, each civ
+        present in `candidates` first rolls 50/50 between its DLC god and the
+        rest of that civ's gods; then a civ is picked, then a god within it.
+        Without the bias this is just a uniform random choice (legacy behavior)."""
+        if not dlc_bias:
+            return self.random.choice(candidates)
+        cand_set = set(candidates)
+        # Group candidates by civ, partitioning Greek/Norse into DLC vs base.
+        # `_DLC_GOD_BY_CIV` lists the DLC major per civ; if it's not in the
+        # candidate pool (e.g. excluded by force_different_god), no bias applies.
+        _DLC_GOD_BY_CIV = {"Greek": 13, "Norse": 14}
+        civs_present = sorted({_civ_of_god_name(g) for g in cand_set})
+        chosen_civ = self.random.choice(civs_present)
+        civ_pool = [g for g in cand_set if _civ_of_god_name(g) == chosen_civ]
+        dlc_id = _DLC_GOD_BY_CIV.get(chosen_civ)
+        if dlc_id is not None and dlc_id in civ_pool:
+            others = [g for g in civ_pool if g != dlc_id]
+            if others and self.random.random() < 0.5:
+                return dlc_id
+            if not others:
+                return dlc_id
+            return self.random.choice(others)
+        return self.random.choice(civ_pool)
 
     # UNUSED: never called. Kept (commented) as a manual-debug helper for RNG drift.
     # def _log_god_assignments(self, assignments: dict[int, int]) -> None:
@@ -856,11 +933,13 @@ class aomWorld(World):
         TIER_POOLS = [
             ["Bolt", "Deconstruction", "LocustSwarm", "GreatHunt", "Shockwave", "GaiaForest"],
             ["Restoration", "Carnivora", "SpiderLair", "Pestilence", "Eclipse",
-            "ShiftingSands", "PlagueOfSerpents", "Undermine", "HealingSpring"],
+            "ShiftingSands", "PlagueOfSerpents", "Undermine", "HealingSpring",
+            "AsgardianBastion"],
             ["Traitor", "FlamingWeapons", "UnderworldPassage", "Bronze", "Curse",
-            "Ancestors", "WalkingWoods", "Frost", "Chaos", "HesperidesTree"],
+            "Ancestors", "WalkingWoods", "Frost", "Chaos", "HesperidesTree",
+            "Tempest"],
             ["LightningStorm", "Earthquake", "Meteor", "Tornado", "Nidhogg",
-            "Implode", "TartarianGate"],
+            "Implode", "TartarianGate", "Inferno"],
         ]
 
         result: dict[int, list[str]] = {}
@@ -1346,35 +1425,33 @@ class aomWorld(World):
                 f"visible location count ({visible_location_count})."
             )
 
-        # Trap cycle — all 12 trap types, repeated indefinitely when drawing traps
-        # Deck-of-cards trap pool: cycle through all trap types in shuffled order,
-        # never repeating a type until all have been used once.
-        # Types 5 (Spawn Units) and 6 (Transform Drops) excluded until implemented.
+        # Trap cycle — deck-of-cards pool: every enabled trap type is shuffled,
+        # popped one at a time, then the deck is reshuffled when empty so no
+        # trap type repeats until every other type has been drawn.
+        #
+        # Adding a NEW TRAP is automatic from this list's perspective:
+        #   1. Add a `TRAP_<NAME>` entry in items/Items.py (Trap(trap_type=N)).
+        #   2. Add the matching trapType case in triggers/archipelago.xs:
+        #        APTrapGetName, the targeting `else if` block (only for
+        #        non-default targets), and the execution dispatch.
+        #   3. Confirm the GP name exists in Memory Files/god powers/
+        #      all_god_power_names.txt.
+        # The trap is auto-included here on next generation; no edit to this
+        # file needed.  To EXCLUDE a trap (buggy / non-castable in current
+        # build), add its item_name to `_DISABLED_TRAPS` below — keeps the
+        # item in the catalog (so existing seeds don't break) but removes it
+        # from the active trap pool.
+        _DISABLED_TRAPS: set = {
+            "Trap: Spawn Units",      # not implemented (trap_type 5)
+            "Trap: Transform Drops",  # not implemented (trap_type 6)
+            "Trap: Spider Lair",      # buggy
+            "Trap: Flaming Weapons",  # fails to cast
+            "Trap: Bronze",           # can't cast on allies
+        }
         _trap_deck_base = [
-            Items.aomItemData.TRAP_METEOR.item_name,
-            Items.aomItemData.TRAP_LIGHTNING_STORM.item_name,
-            # Items.aomItemData.TRAP_LOCUST_SWARM.item_name,  # disabled: buggy
-            Items.aomItemData.TRAP_BOLT.item_name,
-            Items.aomItemData.TRAP_RESTORATION.item_name,
-            Items.aomItemData.TRAP_CITADEL.item_name,
-            Items.aomItemData.TRAP_TORNADO.item_name,
-            Items.aomItemData.TRAP_EARTHQUAKE.item_name,
-            Items.aomItemData.TRAP_CURSE.item_name,
-            Items.aomItemData.TRAP_PLAGUE_SERPENTS.item_name,
-            Items.aomItemData.TRAP_IMPLODE.item_name,
-            Items.aomItemData.TRAP_TARTARIAN_GATE.item_name,
-            Items.aomItemData.TRAP_CHAOS.item_name,
-            Items.aomItemData.TRAP_TRAITOR.item_name,
-            Items.aomItemData.TRAP_CARNIVORA.item_name,
-            # Items.aomItemData.TRAP_SPIDER_LAIR.item_name,  # disabled: buggy
-            Items.aomItemData.TRAP_DECONSTRUCTION.item_name,
-            Items.aomItemData.TRAP_FIMBULWINTER.item_name,
-            # Items.aomItemData.TRAP_FLAMING_WEAPONS.item_name,  # disabled: fails to cast
-            Items.aomItemData.TRAP_ANCESTORS.item_name,
-            Items.aomItemData.TRAP_PESTILENCE.item_name,
-            # Items.aomItemData.TRAP_BRONZE.item_name,  # disabled: can't cast on allies
-            Items.aomItemData.TRAP_NIDHOGG.item_name,
-            Items.aomItemData.TRAP_SHOCKWAVE.item_name,
+            it.item_name for it in Items.aomItemData
+            if it.type_data == Items.Trap
+            and it.item_name not in _DISABLED_TRAPS
         ]
         # Build infinite deck: reshuffle each time a full cycle completes
         _trap_deck: list[str] = []

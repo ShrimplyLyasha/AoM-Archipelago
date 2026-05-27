@@ -82,6 +82,60 @@ logger = logging.getLogger("Client")
 # items have no entry here.
 # -----------------------------------------------------------------------
 
+# Minor god tech (XS const name) -> primary myth unit proto.  Used to hard-
+# forbid wrong-minor-god myth units per scenario when the assigned major god
+# can't access that minor god, OR when the player rejected it at floor tier.
+# Some units gate on multiple minor gods (e.g. RockGiant on Njord OR Aegir);
+# the forbid logic only fires when ALL gating techs are disallowed.
+_MINOR_GOD_MYTH_UNITS: dict[str, str] = {
+    "cTechClassicalAgeAthena":     "Minotaur",
+    "cTechClassicalAgeHermes":     "Centaur",
+    "cTechClassicalAgeAres":       "Cyclops",
+    "cTechClassicalAgePan":        "LykaonVillager",
+    "cTechHeroicAgeApollo":        "Manticore",
+    "cTechHeroicAgeDionysus":      "Hydra",
+    "cTechHeroicAgeAphrodite":     "NemeanLion",
+    "cTechHeroicAgeHestia":        "Hamadryad",
+    "cTechMythicAgeHera":          "Medusa",
+    "cTechMythicAgeHephaestus":    "Colossus",
+    "cTechMythicAgeArtemis":       "Chimera",
+    "cTechMythicAgePersephone":    "Siren",
+    "cTechClassicalAgeAnubis":     "Anubite",
+    "cTechClassicalAgeBast":       "Wadjet",
+    "cTechClassicalAgePtah":       "Sphinx",
+    "cTechHeroicAgeSobek":         "Petsuchos",
+    "cTechHeroicAgeNephthys":      "Scarab",
+    "cTechHeroicAgeSekhmet":       "ScorpionMan",
+    "cTechMythicAgeOsiris":        "Mummy",
+    "cTechMythicAgeHorus":         "Phoenix",
+    "cTechMythicAgeThoth":         "Avenger",
+    "cTechClassicalAgeFreyja":     "Valkyrie",
+    "cTechClassicalAgeForseti":    "Einheri",
+    "cTechClassicalAgeHeimdall":   "Troll",
+    "cTechClassicalAgeUllr":       "Draugr",
+    "cTechHeroicAgeBragi":         "BattleBoar",
+    "cTechHeroicAgeNjord":         "RockGiant",
+    "cTechHeroicAgeSkadi":         "FrostGiant",
+    "cTechHeroicAgeAegir":         "RockGiant",
+    "cTechMythicAgeBaldr":         "MountainGiant",
+    "cTechMythicAgeTyr":           "FireGiant",
+    "cTechMythicAgeHel":           "FenrisWolfBrood",
+    "cTechMythicAgeVidar":         "Fafnir",
+    "cTechClassicalAgePrometheus": "Promethean",
+    "cTechClassicalAgeLeto":       "Caladria",
+    "cTechClassicalAgeOceanus":    "Automaton",
+    "cTechHeroicAgeHyperion":      "Behemoth",
+    "cTechHeroicAgeRheia":         "Satyr",
+    "cTechHeroicAgeTheia":         "StymphalianBird",
+    "cTechMythicAgeHelios":        "Centimanus",
+    "cTechMythicAgeAtlas":         "Argus",
+    "cTechMythicAgeHekate":        "Lampades",
+}
+# Inverted: unit_proto -> set of all gating minor god techs.
+_MYTH_UNIT_GATING: dict[str, set] = {}
+for _tech, _unit in _MINOR_GOD_MYTH_UNITS.items():
+    _MYTH_UNIT_GATING.setdefault(_unit, set()).add(_tech)
+
 _ITEM_TO_UNITS: dict[int, list[str]] = {}
 for _item in aomItemData:
     _t = _item.type
@@ -427,8 +481,10 @@ def _get_has_atlantis(ctx: AoMGameContext, received_set: set) -> int:
 # -----------------------------------------------------------------------
 _GOD_TO_CIV = {
     1: "Greek", 2: "Greek", 3: "Greek",        # Zeus, Poseidon, Hades
+    13: "Greek",                                 # Demeter
     4: "Egyptian", 5: "Egyptian", 6: "Egyptian", # Ra, Isis, Set
     7: "Norse", 8: "Norse", 9: "Norse",          # Thor, Odin, Loki
+    14: "Norse",                                 # Freyr
     10: "Atlantean", 11: "Atlantean", 12: "Atlantean",  # Kronos, Oranos, Gaia
 }
 _CLASSICAL_BLDGS = {
@@ -567,6 +623,10 @@ def write_aom_state(ctx: AoMGameContext) -> None:
                 continue
             lines.append(f"    if (gAPScenarioId == {scenario_id})")
             lines.append("    {")
+            # Build the allowed minor god tech set for forbid computation:
+            #   - floor tier: only the chosen tech is allowed
+            #   - above-floor: both chosen and rejected stay researchable
+            allowed_techs: set = set()
             for tier in sorted(tier_data.keys()):
                 entry   = tier_data[tier]
                 chosen   = entry[0]
@@ -575,6 +635,7 @@ def write_aom_state(ctx: AoMGameContext) -> None:
                 if is_floor:
                     lines.append(f"        trTechSetStatus(1, {chosen}, 2);")
                     lines.append(f"        trTechSetStatus(1, {rejected}, 0);")
+                    allowed_techs.add(chosen)
                 else:
                     # Above-floor tier: both options researchable once the player
                     # has enough age unlocks. Don't force one — let the player
@@ -589,6 +650,19 @@ def write_aom_state(ctx: AoMGameContext) -> None:
                     lines.append(f"            trTechSetStatus(1, {chosen}, 0);")
                     lines.append(f"            trTechSetStatus(1, {rejected}, 0);")
                     lines.append(f"        }}")
+                    allowed_techs.add(chosen)
+                    allowed_techs.add(rejected)
+            # Hard-forbid every minor god myth unit whose gating techs are
+            # all disallowed for this scenario.  Catches:
+            #   * non-pool minor gods of the same civ (e.g. Demeter never
+            #     gets Athena -> Minotaur always forbidden)
+            #   * floor-tier rejected minor gods (engine sets tech to 0 but
+            #     scenario editors sometimes re-grant; trForbidProtounit wins)
+            #   * cross-civ leftover units (redundant with
+            #     APForbidWrongCivTempleUnits but cheap)
+            for unit, gating in sorted(_MYTH_UNIT_GATING.items()):
+                if not (gating & allowed_techs):
+                    lines.append(f'        trForbidProtounit(1, "{unit}");')
             lines.append("    }")
     lines.append("}")
 
@@ -752,7 +826,12 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     _xs("{")
     _xs(f"    gAPTrapQueueSize = {len(ctx.trap_queue)};")
     if ctx.trap_queue:
-        _xs(f"    gAPTrapQueue = new int({len(ctx.trap_queue)}, 0);")
+        # Allocate with extra capacity so APTrapPushBack (in archipelago.xs)
+        # can re-queue traps that fail to find a valid target. 50 retry
+        # slots is plenty in practice — covers many cycles of every queued
+        # trap missing its target on first try.
+        _cap = len(ctx.trap_queue) + 50
+        _xs(f"    gAPTrapQueue = new int({_cap}, 0);")
         for _ti, _tt in enumerate(ctx.trap_queue):
             _xs(f"    gAPTrapQueue[{_ti}] = {_tt};")
     _xs('    trQuestVarSet("APTrapAckNonce", ' + str(ctx.trap_ack_nonce) + ");")

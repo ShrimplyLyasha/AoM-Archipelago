@@ -328,6 +328,16 @@ Only applies when Random Major Gods is enabled."""
     default = 1
 
 
+class MoreFrequentDLCGods(Toggle):
+    """Bias the random god roll toward the DLC majors Demeter (Greek) and Freyr (Norse).
+When enabled, each time Greek is the chosen civilization there is a 50% chance to pick Demeter,
+and each time Norse is the chosen civilization there is a 50% chance to pick Freyr.
+Only applies when Random Major Gods is enabled."""
+    internal_name = "more_frequent_dlc_gods"
+    display_name  = "More Frequent DLC Gods"
+    default = 0
+
+
 class FottGreekCampaign(Toggle):
     """Include the Fall of the Trident: Greek campaign (scenarios 1-10).
 When disabled, FotT scenarios 1-10 are removed from the pool."""
@@ -416,6 +426,7 @@ class AomOptions(PerGameCommonOptions):
     shuffle_egyptian_major_gods:     EgyptianMajorGods
     shuffle_norse_major_gods:        NorseMajorGods
     shuffle_atlantean_major_gods:    AtlanteanMajorGods
+    more_frequent_dlc_gods:          MoreFrequentDLCGods
     fott_greek_campaign:             FottGreekCampaign
     fott_egyptian_campaign:          FottEgyptianCampaign
     fott_norse_campaign:             FottNorseCampaign

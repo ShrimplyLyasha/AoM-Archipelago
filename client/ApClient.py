@@ -382,15 +382,14 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             ctx.ui.update_shop_status(gems_avail, shops_open)
 
     if hasattr(ctx.ui, "update_trap_status"):
+        # Auto-derive trap_type -> display name from Items.py.  New traps
+        # added there flow through automatically — no edit needed here.
+        # Strips the "Trap: " prefix so the GUI shows just the GP name.
+        from ..items.Items import Trap as _Trap
         _TRAP_NAMES = {
-            1: "Meteor", 2: "Lightning Storm", 3: "Locust Swarm", 4: "Bolt",
-            5: "Spawn Units", 6: "Transform Drops", 7: "Restoration", 8: "Citadel",
-            9: "Tornado", 10: "Earthquake", 11: "Curse", 12: "Plague of Serpents",
-            13: "Implode", 14: "Tartarian Gate", 15: "Chaos", 16: "Traitor",
-            17: "Carnivora", 18: "Spider Lair", 19: "Deconstruction",
-            20: "Fimbulwinter", 21: "Flaming Weapons", 22: "Ancestors",
-            23: "Pestilence", 25: "Nidhogg",
-            26: "Shockwave",
+            it.type.trap_type: (it.item_name[6:] if it.item_name.startswith("Trap: ") else it.item_name)
+            for it in aomItemData
+            if it.type_data == _Trap
         }
         queue = ctx.game_ctx.trap_queue
         next_name = _TRAP_NAMES.get(queue[0], f"Trap {queue[0]}") if queue else ""
@@ -425,6 +424,7 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             4: "Isis",   5: "Ra",       6: "Set",
             7: "Odin",   8: "Thor",     9: "Loki",
             10: "Kronos", 11: "Oranos", 12: "Gaia",
+            13: "Demeter", 14: "Freyr",
         }
         god_assignments = getattr(ctx.game_ctx, "god_assignments", {}) or {}
         for scenario_id, god_id in god_assignments.items():
@@ -483,6 +483,7 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             relicsanity=relicsanity,
             checked_locs=checked_locs,
             disabled_campaign_ids=disabled_ids,
+            campaign_unlocked_by_id=campaign_unlocked_by_id,
         )
 
 
@@ -965,6 +966,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
             4: "Isis",   5: "Ra",       6: "Set",
             7: "Odin",   8: "Thor",     9: "Loki",
             10: "Kronos", 11: "Oranos", 12: "Gaia",
+            13: "Demeter", 14: "Freyr",
         }
         # Scenario names keyed by APScenarioID.
         # FotT uses IDs 1-32, New Atlantis 501-512, Golden Gift 601-604.

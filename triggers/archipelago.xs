@@ -503,6 +503,11 @@ int gAPMajorGod    = 0;
 // 0=Archaic, 1=Classical, 2=Heroic, 3=Mythic. -1 = uninit (watcher no-op).
 int gAPAgeCap      = -1;
 bool gAPRandomMajorGods  = false;
+// DLC major-god (Demeter/Freyr) two-stage civ swap. trPlayerSetCiv to a
+// DLC civ name silently no-ops unless we first go through "Nature" and
+// wait at least one second.  See APApplyDLCCivSwap below.
+bool gAPDLCSwapPending = false;
+int  gAPDLCSwapTime    = 0;
 bool gHasGreek     = false;
 bool gHasEgyptian  = false;
 bool gHasNorse     = false;
@@ -523,6 +528,8 @@ const int cAPMajorLoki      = 9;
 const int cAPMajorKronos    = 10;
 const int cAPMajorOranos    = 11;
 const int cAPMajorGaia      = 12;
+const int cAPMajorDemeter   = 13;
+const int cAPMajorFreyr     = 14;
 
 
 // -----------------------------------------------------------------------
@@ -625,11 +632,14 @@ int APGetMajorGodForScenario(int scenarioId = 0)
 void APForceDisableAllGreekAgeTechs()
 {
     trTechSetStatus(1, cTechClassicalAgeAthena, 0);  trTechSetStatus(1, cTechClassicalAgeHermes, 0);
-    trTechSetStatus(1, cTechClassicalAgeAres, 0);    trTechSetStatus(1, cTechClassicalAgeGreek, 0);
+    trTechSetStatus(1, cTechClassicalAgeAres, 0);    trTechSetStatus(1, cTechClassicalAgePan, 0);
+    trTechSetStatus(1, cTechClassicalAgeGreek, 0);
     trTechSetStatus(1, cTechHeroicAgeApollo, 0);     trTechSetStatus(1, cTechHeroicAgeDionysus, 0);
-    trTechSetStatus(1, cTechHeroicAgeAphrodite, 0);  trTechSetStatus(1, cTechHeroicAgeGreek, 0);
+    trTechSetStatus(1, cTechHeroicAgeAphrodite, 0);  trTechSetStatus(1, cTechHeroicAgeHestia, 0);
+    trTechSetStatus(1, cTechHeroicAgeGreek, 0);
     trTechSetStatus(1, cTechMythicAgeHera, 0);       trTechSetStatus(1, cTechMythicAgeHephaestus, 0);
-    trTechSetStatus(1, cTechMythicAgeArtemis, 0);    trTechSetStatus(1, cTechMythicAgeGreek, 0);
+    trTechSetStatus(1, cTechMythicAgeArtemis, 0);    trTechSetStatus(1, cTechMythicAgePersephone, 0);
+    trTechSetStatus(1, cTechMythicAgeGreek, 0);
 }
 
 void APForceDisableAllEgyptianAgeTechs()
@@ -665,6 +675,80 @@ void APForceDisableAllAtlanteanAgeTechs()
     trTechSetStatus(1, cTechMythicAgeHekate, 0);         trTechSetStatus(1, cTechMythicAgeAtlantean, 0);
 }
 
+// APForbidWrongCivTempleUnits — forbids every temple-trainable unit (myth +
+// civ-flavor units like Hersir/Priest/Oracle) for the three civilizations
+// that don't match the assigned major god.  Unlike APForbidItemGatedUnits
+// this fires unconditionally regardless of which myth-unit items the player
+// has received, so e.g. Loki on a Hades scenario cannot train Cyclops even
+// if the Greek Classical Myth Units item is in their inventory.
+//
+// Unit list mirrors the per-civ TempleOvergrown blocks in
+// APActivateScenarioStage2 (the canonical roster for each civ's temple).
+void APForbidWrongCivTempleUnits()
+{
+    bool isGreek     = (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades || gAPMajorGod == cAPMajorDemeter);
+    bool isEgyptian  = (gAPMajorGod == cAPMajorIsis || gAPMajorGod == cAPMajorRa       || gAPMajorGod == cAPMajorSet);
+    bool isNorse     = (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor     || gAPMajorGod == cAPMajorLoki || gAPMajorGod == cAPMajorFreyr);
+    bool isAtlantean = (gAPMajorGod == cAPMajorKronos || gAPMajorGod == cAPMajorOranos || gAPMajorGod == cAPMajorGaia);
+
+    if (isGreek == false)
+    {
+        trForbidProtounit(1, "Pegasus");
+        trForbidProtounit(1, "Minotaur");
+        trForbidProtounit(1, "Centaur");
+        trForbidProtounit(1, "Cyclops");
+        trForbidProtounit(1, "LykaonVillager");
+        trForbidProtounit(1, "NemeanLion");
+        trForbidProtounit(1, "Manticore");
+        trForbidProtounit(1, "Hydra");
+        trForbidProtounit(1, "Hamadryad");
+        trForbidProtounit(1, "Chimera");
+        trForbidProtounit(1, "Colossus");
+        trForbidProtounit(1, "Medusa");
+        trForbidProtounit(1, "Siren");
+        trForbidProtounit(1, "HarpyMyth");
+    }
+    if (isEgyptian == false)
+    {
+        trForbidProtounit(1, "Wadjet");
+        trForbidProtounit(1, "Anubite");
+        trForbidProtounit(1, "Sphinx");
+        trForbidProtounit(1, "Scarab");
+        trForbidProtounit(1, "Petsuchos");
+        trForbidProtounit(1, "ScorpionMan");
+        trForbidProtounit(1, "Phoenix");
+        trForbidProtounit(1, "Avenger");
+        trForbidProtounit(1, "Mummy");
+        trForbidProtounit(1, "Roc");
+    }
+    if (isNorse == false)
+    {
+        trForbidProtounit(1, "Troll");
+        trForbidProtounit(1, "Valkyrie");
+        trForbidProtounit(1, "Einheri");
+        trForbidProtounit(1, "Draugr");
+        trForbidProtounit(1, "BattleBoar");
+        trForbidProtounit(1, "RockGiant");
+        trForbidProtounit(1, "FrostGiant");
+        trForbidProtounit(1, "MountainGiant");
+        trForbidProtounit(1, "FireGiant");
+        trForbidProtounit(1, "FenrisWolfBrood");
+        trForbidProtounit(1, "Fafnir");
+    }
+    if (isAtlantean == false)
+    {
+        trForbidProtounit(1, "Automaton");
+        trForbidProtounit(1, "Promethean");
+        trForbidProtounit(1, "Caladria");
+        trForbidProtounit(1, "Satyr");
+        trForbidProtounit(1, "Behemoth");
+        trForbidProtounit(1, "StymphalianBird");
+        trForbidProtounit(1, "Centimanus");
+        trForbidProtounit(1, "Lampades");
+        trForbidProtounit(1, "Argus");
+    }
+}
+
 // APSetPlayerCiv — when random_major_gods is on, swap Player 1's civilization
 // to match the seed-assigned god.  Also clears every civ's age techs so the
 // scenario starts from a known zero state regardless of vanilla defaults.
@@ -675,12 +759,31 @@ void APForceDisableAllAtlanteanAgeTechs()
 // god ids and dispatch trPlayerSetCiv("<NewGodName>") + APForceDisableAll*.
 void APSetPlayerCiv()
 {
+    gAPDLCSwapPending = false;
     // Set civ first, then force-disable all age techs for non-assigned civs.
     // Force-disable (no guard) clears any pre-set vanilla scenario age techs.
     // We also force-disable the ASSIGNED civ's own techs because trPlayerSetCiv
     // auto-enables that civ's full age tech tree (status 1). Without this,
     // APDisableAllNorseAgeTechs (etc.) would see them as "active" and skip
     // them, leaving Mythic available even when the player lacks those unlocks.
+    // DLC majors (Demeter / Freyr) need a two-stage swap: set Nature first,
+    // wait ~1s, then set the DLC civ + activate ArchaicAge<God>.  Otherwise
+    // trPlayerSetCiv silently no-ops and the player stays on the vanilla civ.
+    // Bootstrap stage 2 of APActivateScenario waits on gAPDLCSwapPending.
+    if (gAPMajorGod == cAPMajorDemeter || gAPMajorGod == cAPMajorFreyr)
+    {
+        trPlayerKillAllGodPowers(1);
+        APForceDisableAllGreekAgeTechs();
+        APForceDisableAllEgyptianAgeTechs();
+        APForceDisableAllNorseAgeTechs();
+        APForceDisableAllAtlanteanAgeTechs();
+        trPlayerSetCiv(1, "Nature");
+        gAPDLCSwapPending = true;
+        gAPDLCSwapTime    = xsGetTime();
+        xsEnableRule("APApplyDLCCivSwap");
+        return;
+    }
+
     if (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades)
     {
         if (gAPMajorGod == cAPMajorZeus)     { trPlayerSetCiv(1, "Zeus"); }
@@ -703,9 +806,9 @@ void APSetPlayerCiv()
     }
     if (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor || gAPMajorGod == cAPMajorLoki)
     {
-        if (gAPMajorGod == cAPMajorOdin) { trPlayerSetCiv(1, "Odin"); }
-        if (gAPMajorGod == cAPMajorThor) { trPlayerSetCiv(1, "Thor"); }
-        if (gAPMajorGod == cAPMajorLoki) { trPlayerSetCiv(1, "Loki"); }
+        if (gAPMajorGod == cAPMajorOdin)  { trPlayerSetCiv(1, "Odin"); }
+        if (gAPMajorGod == cAPMajorThor)  { trPlayerSetCiv(1, "Thor"); }
+        if (gAPMajorGod == cAPMajorLoki)  { trPlayerSetCiv(1, "Loki"); }
         APForceDisableAllGreekAgeTechs();
         APForceDisableAllEgyptianAgeTechs();
         APForceDisableAllNorseAgeTechs();
@@ -807,6 +910,8 @@ void APAnnounceGod()
     if (gAPMajorGod == cAPMajorKronos)   { godName = "Kronos";   colorOpen = "<color0,1,1>"; }
     if (gAPMajorGod == cAPMajorOranos)   { godName = "Oranos";   colorOpen = "<color0,1,1>"; }
     if (gAPMajorGod == cAPMajorGaia)     { godName = "Gaia";     colorOpen = "<color0,1,1>"; }
+    if (gAPMajorGod == cAPMajorDemeter)  { godName = "Demeter";  colorOpen = "<color0.3,0.3,1>"; }
+    if (gAPMajorGod == cAPMajorFreyr)    { godName = "Freyr";    colorOpen = "<color0.53,0.31,0.31>"; }
 
     if (godName != "")
     {
@@ -1517,6 +1622,7 @@ string APGetCheckText(int id = 0)
     if (id == 3926736) { return "Relic 3: North Small Island"; }
     if (id == 3926737) { return "Relic 4: East of Northern Settlement"; }
     if (id == 3926738) { return "Relic 5: Center Hill of Map"; }
+    if (id == 3926739) { return "Relic 6: Behind Folstag's Eastern Hillfort"; }
     // GG 2
     if (id == 3926834) { return "Relic 1: East on Starting Island"; }
     if (id == 3926835) { return "Relic 2: Northwest Goldmine Island"; }
@@ -1725,7 +1831,14 @@ int APTrapQueryBuilding(int playerID = 1)
 // Query a building target for Deconstruction:
 //   1st priority — Sentry Tower
 //   2nd priority — Temple
-//   Fallback     — any P1 building that is not a Town Center
+//   3rd priority — any military building (Military Academy, Archery Range,
+//                  Stable, Fortress, Barracks, Migdol Stronghold, Siege
+//                  Works, Longhouse, Great Hall, Hill Fort, Military
+//                  Barracks, Counter Barracks, Palace).  Names mirror the
+//                  list in GameClient._CLASSICAL_BLDGS / _HEROIC_BLDGS.
+//   4th priority — any P1 building at all.
+//   Returns -1 if Player 1 has no buildings — the trap is then re-queued
+//   to retry later (see APTrapTimer).
 int APTrapQueryDeconBuilding()
 {
     // Try Sentry Tower first
@@ -1734,7 +1847,9 @@ int APTrapQueryDeconBuilding()
     // Try Temple
     _uid = APTrapQueryRandom(1, "Temple");
     if (_uid >= 0) { return (_uid); }
-    // Fallback: any alive P1 building except Town Center
+
+    // Gather all P1 buildings once; filter for military buildings, fall
+    // back to any building if no military one exists.
     xsSetContextPlayer(1);
     int qid = kbUnitQueryCreate("APDeconBldQ");
     kbUnitQuerySetPlayerID(qid, 1);
@@ -1744,27 +1859,41 @@ int APTrapQueryDeconBuilding()
     int[] res = kbUnitQueryGetResults(qid);
     kbUnitQueryDestroy(qid);
     xsSetContextPlayer(12);
+
     int sz = res.size();
     if (sz <= 0) { return (-1); }
-    // Shuffle through candidates, skip Town Centers
-    int attempt = 0;
-    while (attempt < sz)
+
+    int[] mils = new int(sz, -1);
+    int milCount = 0;
+    int i = 0;
+    while (i < sz)
     {
-        int candidate = res[xsRandInt(0, sz - 1)];
-        string pname = kbProtoUnitGetName(kbUnitGetProtoUnitID(candidate));
-        if (pname != "TownCenter" && pname != "TownCenterAbandoned")
+        string pname = kbProtoUnitGetName(kbUnitGetProtoUnitID(res[i]));
+        if (pname == "MilitaryAcademy"  || pname == "ArcheryRange"   ||
+            pname == "Stable"           || pname == "Fortress"       ||
+            pname == "Barracks"         || pname == "MigdolStronghold" ||
+            pname == "SiegeWorks"       || pname == "Longhouse"      ||
+            pname == "GreatHall"        || pname == "HillFort"       ||
+            pname == "MilitaryBarracks" || pname == "CounterBarracks" ||
+            pname == "Palace")
         {
-            return (candidate);
+            mils[milCount] = res[i];
+            milCount++;
         }
-        attempt++;
+        i++;
     }
-    return (-1);
+    if (milCount > 0) { return (mils[xsRandInt(0, milCount - 1)]); }
+
+    // 4th priority: any P1 building.
+    return (res[xsRandInt(0, sz - 1)]);
 }
 
 
 
 // Prefer myth units for single-unit targeted powers (Bolt, Traitor).
-// Falls back to cUnitTypeUnit if no myth units found.
+// Falls back to human military soldiers — Traitor will not convert
+// villagers or heroes, so cUnitTypeHumanSoldier is the right pool.
+// Returns -1 if neither pool has alive units (trap then re-queued).
 int APTrapQueryMythOrUnit(int playerID = 1)
 {
     xsSetContextPlayer(playerID);
@@ -1777,8 +1906,20 @@ int APTrapQueryMythOrUnit(int playerID = 1)
     kbUnitQueryDestroy(qid);
     xsSetContextPlayer(12);
     if (res.size() > 0) { return (res[xsRandInt(0, res.size() - 1)]); }
-    // No myth units — fall back to any military unit
-    return (APTrapQueryRandom(playerID, "default"));
+
+    // No myth units — fall back to any human military unit.
+    xsSetContextPlayer(playerID);
+    qid = kbUnitQueryCreate("APTrapHumQ");
+    kbUnitQuerySetPlayerID(qid, playerID);
+    kbUnitQuerySetUnitType(qid, cUnitTypeHumanSoldier);
+    kbUnitQuerySetState(qid, cUnitStateAlive);
+    kbUnitQueryExecute(qid);
+    res = kbUnitQueryGetResults(qid);
+    kbUnitQueryDestroy(qid);
+    xsSetContextPlayer(12);
+    if (res.size() > 0) { return (res[xsRandInt(0, res.size() - 1)]); }
+
+    return (-1);
 }
 
 string APTrapGetName(int trapType = 0)
@@ -1806,6 +1947,27 @@ string APTrapGetName(int trapType = 0)
     if (trapType == 23) { return ("Pestilence"); }
     if (trapType == 25) { return ("Nidhogg"); }
     if (trapType == 26) { return ("Shockwave"); }
+    if (trapType == 27) { return ("Tempest"); }
+    if (trapType == 28) { return ("Inferno"); }
+    if (trapType == 29) { return ("Corrupted Ground"); }
+    if (trapType == 30) { return ("Yinglong's Wrath"); }
+    if (trapType == 31) { return ("Kusanagi"); }
+    if (trapType == 32) { return ("Swampland"); }
+    if (trapType == 33) { return ("Thunder Burst"); }
+    if (trapType == 34) { return ("Smiting Gust"); }
+    if (trapType == 35) { return ("Divine Slash"); }
+    if (trapType == 36) { return ("Dragon Typhoon"); }
+    if (trapType == 37) { return ("Infestation"); }
+    if (trapType == 38) { return ("Lullaby"); }
+    if (trapType == 39) { return ("Purge"); }
+    if (trapType == 40) { return ("Earth Monster"); }
+    if (trapType == 41) { return ("Starfall"); }
+    if (trapType == 42) { return ("Chicken Storm"); }
+    if (trapType == 43) { return ("Undermine"); }
+    if (trapType == 44) { return ("Drought Land"); }
+    if (trapType == 45) { return ("Great Flood"); }
+    if (trapType == 46) { return ("Volcano"); }
+    if (trapType == 47) { return ("Vanish"); }
     return ("Unknown Trap");
 }
 
@@ -1816,15 +1978,12 @@ string APTrapGetName(int trapType = 0)
 //
 // Args:
 //   trapType — 1..N matching cAPTrap* / aomItemData.TRAP_*.trap_type.
-void APTrapExecuteTrap(int trapType = 0)
+bool APTrapExecuteTrap(int trapType = 0)
 {
-    // Announcement
-    string _name = APTrapGetName(trapType);
-    trMessageSetText("<color0.788,0.412,0.373>" + _name + " trap triggered</color>", 6);
-
-    // Targeting
+    // Targeting — every trap needs a valid unit/building for its position.
+    // Returning false here lets APTrapTimer push the trap back to the
+    // queue tail and retry later (e.g. once buildings/military exist).
     int _uid  = -1;
-    int _buid = -1;  // building target (Citadel, Deconstruction, Pestilence)
     gAPTrapPos = vector(0, 0, 0);
 
     // Friendly powers target P2; unit-targeted powers pick cUnitTypeUnit;
@@ -1841,24 +2000,29 @@ void APTrapExecuteTrap(int trapType = 0)
         if (_uid < 0) { _uid = APTrapQueryRandom(4, "Town Center"); }
         if (_uid < 0) { _uid = APTrapQueryRandom(5, "Town Center"); }
         if (_uid < 0) { _uid = APTrapQueryRandom(6, "Town Center"); }
-        // No fallback to generic unit — Citadel must target a TC or skip
     }
-    else if (trapType == 23)
+    else if (trapType == 23 || trapType == 10 || trapType == 14 ||
+             trapType == 43 || trapType == 44 || trapType == 45 || trapType == 46)
     {
-        // Pestilence → random P1 building
+        // Building-target traps (Pestilence / Earthquake / TartarianGate /
+        // Undermine / DroughtLand / GreatFlood / Volcano) → random P1 building
         _uid = APTrapQueryBuilding(1);
         if (_uid < 0) { _uid = APTrapQueryRandom(1, "default"); }
     }
     else if (trapType == 19)
     {
-        // Deconstruction → Sentry Tower, then Temple, then any non-TC P1 building
+        // Deconstruction → Sentry Tower / Temple / military / any building
         _uid = APTrapQueryDeconBuilding();
-        // No unit fallback — Deconstruction must hit a building or skip
     }
     else if (trapType == 4 || trapType == 16)
     {
-        // Bolt / Traitor → prefer myth units, fall back to military units
+        // Bolt / Traitor → prefer myth units, else any human soldier
         _uid = APTrapQueryMythOrUnit(1);
+    }
+    else if (trapType == 47)
+    {
+        // Vanish → prefer hostile myth unit (P2), else any hostile unit
+        _uid = APTrapQueryMythOrUnit(2);
     }
     else
     {
@@ -1866,10 +2030,13 @@ void APTrapExecuteTrap(int trapType = 0)
         _uid = APTrapQueryRandom(1, "default");
     }
 
-    if (_uid >= 0) { gAPTrapPos = trUnitGetPosition(_uid); }
+    if (_uid < 0) { return (false); }
 
-    // Debug: show trap type and coordinates
-    trMessageSetText("<color0.788,0.412,0.373>" + APTrapGetName(trapType) + " Trap!</color>", 6);
+    gAPTrapPos = trUnitGetPosition(_uid);
+
+    // Announce only when the trap actually fires.
+    string _name = APTrapGetName(trapType);
+    trMessageSetText("<color0.788,0.412,0.373>" + _name + " trap triggered</color>", 6);
 
     // Disable god power blocking before invoke, re-enable after
     trGodPowerEnableBlocking(false);
@@ -1878,18 +2045,7 @@ void APTrapExecuteTrap(int trapType = 0)
 
     if (trapType == 1)  { trGodPowerGrant(12, "Meteor",             1, 0, false, false); trGodPowerInvoke(12, "Meteor",             gAPTrapPos, gAPTrapPos, true); }
     if (trapType == 2)  { trGodPowerGrant(12, "LightningStorm",    1, 0, false, false); trGodPowerInvoke(12, "LightningStorm",    gAPTrapPos, gAPTrapPos, true); }
-    if (trapType == 3)
-    {
-        // Locust Swarm: pos1=start, pos2=direction. Pick a random cardinal offset.
-        int _lsDir = xsRandInt(0, 3);
-        vector _lsEnd = gAPTrapPos;
-        if (_lsDir == 0) { _lsEnd = gAPTrapPos + vector(30, 0, 0); }
-        if (_lsDir == 1) { _lsEnd = gAPTrapPos + vector(-30, 0, 0); }
-        if (_lsDir == 2) { _lsEnd = gAPTrapPos + vector(0, 0, 30); }
-        if (_lsDir == 3) { _lsEnd = gAPTrapPos + vector(0, 0, -30); }
-        trGodPowerGrant(12, "LocustSwarm", 1, 0, false, false);
-        trGodPowerInvoke(12, "LocustSwarm", gAPTrapPos, _lsEnd, true);
-    }
+    if (trapType == 3)  { trGodPowerGrant(12, "LocustSwarm",        1, 0, false, false); trGodPowerInvoke(12, "LocustSwarm",        gAPTrapPos, gAPTrapPos, true); }
     if (trapType == 4)  { trGodPowerGrant(12, "Bolt",               1, 0, false, false); trGodPowerInvoke(12, "Bolt",               gAPTrapPos, gAPTrapPos, true); }
     if (trapType == 7)  { trGodPowerGrant(12, "Restoration",        1, 0, false, false); trGodPowerInvoke(12, "Restoration",        gAPTrapPos, gAPTrapPos, true); }
     if (trapType == 8)  { trGodPowerGrant(12, "Citadel",            1, 0, false, false); trGodPowerInvoke(12, "Citadel",            gAPTrapPos, gAPTrapPos, true); }
@@ -1916,11 +2072,33 @@ void APTrapExecuteTrap(int trapType = 0)
         trGodPowerInvoke(12, "Nidhogg", gAPTrapPos, gAPTrapPos, true);
     }
     if (trapType == 26) { trGodPowerGrant(12, "Shockwave",          1, 0, false, false); trGodPowerInvoke(12, "Shockwave",          gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 27) { trGodPowerGrant(12, "Tempest",            1, 0, false, false); trGodPowerInvoke(12, "Tempest",            gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 28) { trGodPowerGrant(12, "Inferno",            1, 0, false, false); trGodPowerInvoke(12, "Inferno",            gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 29) { trGodPowerGrant(12, "CorruptedGround",    1, 0, false, false); trGodPowerInvoke(12, "CorruptedGround",    gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 30) { trGodPowerGrant(12, "YinglongsWrath",     1, 0, false, false); trGodPowerInvoke(12, "YinglongsWrath",     gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 31) { trGodPowerGrant(12, "Kusanagi",           1, 0, false, false); trGodPowerInvoke(12, "Kusanagi",           gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 32) { trGodPowerGrant(12, "Swampland",          1, 0, false, false); trGodPowerInvoke(12, "Swampland",          gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 33) { trGodPowerGrant(12, "ThunderBurst",       1, 0, false, false); trGodPowerInvoke(12, "ThunderBurst",       gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 34) { trGodPowerGrant(12, "SmitingGust",        1, 0, false, false); trGodPowerInvoke(12, "SmitingGust",        gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 35) { trGodPowerGrant(12, "DivineSlash",        1, 0, false, false); trGodPowerInvoke(12, "DivineSlash",        gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 36) { trGodPowerGrant(12, "DragonTyphoon",      1, 0, false, false); trGodPowerInvoke(12, "DragonTyphoon",      gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 37) { trGodPowerGrant(12, "Infestation",        1, 0, false, false); trGodPowerInvoke(12, "Infestation",        gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 38) { trGodPowerGrant(12, "Lullaby",            1, 0, false, false); trGodPowerInvoke(12, "Lullaby",            gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 39) { trGodPowerGrant(12, "Purge",              1, 0, false, false); trGodPowerInvoke(12, "Purge",              gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 40) { trGodPowerGrant(12, "EarthMonster",       1, 0, false, false); trGodPowerInvoke(12, "EarthMonster",       gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 41) { trGodPowerGrant(12, "Starfall",           1, 0, false, false); trGodPowerInvoke(12, "Starfall",           gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 42) { trGodPowerGrant(12, "ChickenStorm",       1, 0, false, false); trGodPowerInvoke(12, "ChickenStorm",       gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 43) { trGodPowerGrant(12, "Undermine",          1, 0, false, false); trGodPowerInvoke(12, "Undermine",          gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 44) { trGodPowerGrant(12, "DroughtLand",        1, 0, false, false); trGodPowerInvoke(12, "DroughtLand",        gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 45) { trGodPowerGrant(12, "GreatFlood",         1, 0, false, false); trGodPowerInvoke(12, "GreatFlood",         gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 46) { trGodPowerGrant(12, "Volcano",            1, 0, false, false); trGodPowerInvoke(12, "Volcano",            gAPTrapPos, gAPTrapPos, true); }
+    if (trapType == 47) { trGodPowerGrant(12, "Vanish",             1, 0, false, false); trGodPowerInvoke(12, "Vanish",             gAPTrapPos, gAPTrapPos, true); }
 
     trGodPowerEnableBlocking(true);
 
     // Signal client — log flushed at scenario end, client counts these
     trExecuteOnAI(12, "APTrapFiredSignal");
+    return (true);
 }
 
 
@@ -2064,9 +2242,9 @@ void APApplyStartingTechs(int econHas = 0, int milHas = 0, int dockHas = 0, int 
     // --- Starting Buildings Tech ---
     // Civ-specific techs gated on gAPMajorGod.
     // Greek: 1,2,3   Egyptian: 4,5,6   Norse: 7,8,9   Atlantean: 10,11,12
-    bool _isGreek     = (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades);
+    bool _isGreek     = (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades || gAPMajorGod == cAPMajorDemeter);
     bool _isEgyptian  = (gAPMajorGod == cAPMajorIsis  || gAPMajorGod == cAPMajorRa      || gAPMajorGod == cAPMajorSet);
-    bool _isNorse     = (gAPMajorGod == cAPMajorOdin  || gAPMajorGod == cAPMajorThor    || gAPMajorGod == cAPMajorLoki);
+    bool _isNorse     = (gAPMajorGod == cAPMajorOdin  || gAPMajorGod == cAPMajorThor    || gAPMajorGod == cAPMajorLoki || gAPMajorGod == cAPMajorFreyr);
     bool _isAtlantean = (gAPMajorGod == cAPMajorKronos || gAPMajorGod == cAPMajorOranos || gAPMajorGod == cAPMajorGaia);
 
     if (bldgsHas >= 1 && age >= 1)  // Classical+ (all civs)
@@ -2144,6 +2322,16 @@ void APTrapPop()
     gAPTrapPending = false;
 }
 
+// APTrapPushBack — append `trapType` to the queue tail.  Used when a trap
+// fires but can't find a valid target (no buildings/units yet), so we
+// retry it later instead of wasting it.  The queue is allocated by
+// APTrapQueueInit (in aom_state.xs) with extra capacity for retries.
+void APTrapPushBack(int trapType = 0)
+{
+    gAPTrapQueue[gAPTrapQueueSize] = trapType;
+    gAPTrapQueueSize++;
+}
+
 
 // =============================================================================
 // APActivateScenario — the main per-scenario bootstrap rule.
@@ -2197,6 +2385,21 @@ runImmediately
     APInitGods();
     APReadRandomGod();
     APSetPlayerCiv();
+    // Stage 2 of bootstrap runs as its own rule so the DLC delayed-civ-swap
+    // path can defer it until after Nature -> DLC trPlayerSetCiv completes.
+    // For non-DLC gods APApplyDLCCivSwap stays disabled; we just enable Stage2.
+    if (gAPDLCSwapPending == false) { xsEnableRule("APActivateScenarioStage2"); }
+    xsDisableSelf();
+}
+
+// APActivateScenarioStage2 — everything in APActivateScenario after
+// APSetPlayerCiv.  Lives in its own rule so the DLC two-stage civ swap can
+// defer it until after the Nature -> DLC trPlayerSetCiv settles.
+rule APActivateScenarioStage2
+highFrequency
+inactive
+runImmediately
+{
     APForbidVanillaArchaicUnits();
     APInitGodPowers();
     // Reset random god power QVs at the start of each scenario.
@@ -2209,6 +2412,7 @@ runImmediately
     xsEnableRule("APRandGP3");
     xsEnableRule("APRandGP4");
     APForbidItemGatedUnits();
+    APForbidWrongCivTempleUnits();
 
     // Apply progressive tech upgrades now — must come after APSetPlayerCiv()
     // because changing civilization wipes any previously researched technologies.
@@ -2274,74 +2478,199 @@ runImmediately
 
     gAPRandomMajorGods = (gAPItemCount > 5 && gAPItems[5] == 9010);
 
-    // NA 2 (Atlantis Reborn): configure TempleOvergrown to train the full set
-    // of units that a normal temple can train, based on the assigned major god.
+    // NA 2 (Atlantis Reborn): TempleOvergrown gets the full Temple roster
+    // (units + techs) for EVERY civ unconditionally.  Mirrors the canonical
+    // Temple proto in proto.xml at line 26337 (search `<hotkeycontext>TempleAccel`)
+    // so any civ assigned via random_major_gods can train its own units +
+    // research its own minor-god techs from the overgrown structure.
+    //
+    // EXTENDING for a new civ: append the corresponding `<train>` and
+    // `<tech>` rows from proto.xml's Temple block here at the same row/col
+    // coordinates.  Row 0 = trainable units, rows 1-2 = techs.
     if (gAPScenarioId == 502)
     {
-        // Greek
-        if (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades)
-        {
-            trProtounitAddTrain("TempleOvergrown", 1, "Pegasus",        0, 0);
-            trProtounitAddTrain("TempleOvergrown", 1, "Minotaur",       0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Centaur",        0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Cyclops",        0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "LykaonVillager", 0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "NemeanLion",     0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Manticore",      0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Hydra",          0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Hamadryad",      0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Chimera",        0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Colossus",       0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Medusa",         0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Siren",          0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "HarpyMyth",      0, 4);
-        }
-        // Egyptian
-        if (gAPMajorGod == cAPMajorIsis || gAPMajorGod == cAPMajorRa || gAPMajorGod == cAPMajorSet)
-        {
-            trProtounitAddTrain("TempleOvergrown", 1, "Priest",         0, 0);
-            trProtounitAddTrain("TempleOvergrown", 1, "Wadjet",         0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Anubite",        0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Sphinx",         0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Scarab",         0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Petsuchos",      0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "ScorpionMan",    0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Phoenix",        0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Avenger",        0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Mummy",          0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Roc",            0, 4);
-        }
-        // Norse
-        if (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor || gAPMajorGod == cAPMajorLoki)
-        {
-            trProtounitAddTrain("TempleOvergrown", 1, "Hersir",         0, 0);
-            trProtounitAddTrain("TempleOvergrown", 1, "Troll",          0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Valkyrie",       0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Einheri",        0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Draugr",         0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "BattleBoar",     0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "RockGiant",      0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "FrostGiant",     0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "MountainGiant",  0, 4);
-            trProtounitAddTrain("TempleOvergrown", 1, "FireGiant",      0, 5);
-            trProtounitAddTrain("TempleOvergrown", 1, "FenrisWolfBrood",0, 5);
-            trProtounitAddTrain("TempleOvergrown", 1, "Fafnir",         0, 5);
-        }
-        // Atlantean
-        if (gAPMajorGod == cAPMajorKronos || gAPMajorGod == cAPMajorOranos || gAPMajorGod == cAPMajorGaia)
-        {
-            trProtounitAddTrain("TempleOvergrown", 1, "Oracle",         0, 0);
-            trProtounitAddTrain("TempleOvergrown", 1, "Automaton",      0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Promethean",     0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Caladria",       0, 1);
-            trProtounitAddTrain("TempleOvergrown", 1, "Satyr",          0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Behemoth",       0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "StymphalianBird",0, 2);
-            trProtounitAddTrain("TempleOvergrown", 1, "Centimanus",     0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Lampades",       0, 3);
-            trProtounitAddTrain("TempleOvergrown", 1, "Argus",          0, 3);
-        }
+        // ---- Greek units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Pegasus",        0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "Minotaur",       0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Centaur",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Cyclops",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "LykaonVillager", 0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "NemeanLion",     0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Manticore",      0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Hydra",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Hamadryad",      0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Chimera",        0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Colossus",       0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Medusa",         0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Siren",          0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "HarpyMyth",      0, 4);
+        // ---- Egyptian units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Priest",         0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "Wadjet",         0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Anubite",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Sphinx",         0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Scarab",         0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Petsuchos",      0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "ScorpionMan",    0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Phoenix",        0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Avenger",        0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Mummy",          0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Roc",            0, 4);
+        // ---- Norse units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Hersir",         0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "Troll",          0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Valkyrie",       0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Einheri",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Draugr",         0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "BattleBoar",     0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "RockGiant",      0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "FrostGiant",     0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "MountainGiant",  0, 4);
+        trProtounitAddTrain("TempleOvergrown", 1, "FireGiant",      0, 5);
+        trProtounitAddTrain("TempleOvergrown", 1, "FenrisWolfBrood",0, 5);
+        trProtounitAddTrain("TempleOvergrown", 1, "Fafnir",         0, 5);
+        // ---- Atlantean units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Oracle",         0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "Automaton",      0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Promethean",     0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Caladria",       0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Satyr",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Behemoth",       0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "StymphalianBird",0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Centimanus",     0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Lampades",       0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Argus",          0, 3);
+        // ---- Chinese units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Pioneer",        0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "QiLin",          0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "YaZi",           0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "QiongQi",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "TaoTie",         0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "BaiHu",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "TaoWu",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "QingLong",       0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "HunDun",         0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "ZhuQue",         0, 3);
+        // ---- Japanese units ----
+        trProtounitAddTrain("TempleOvergrown", 1, "Kitsune",        0, 0);
+        trProtounitAddTrain("TempleOvergrown", 1, "Jorogumo",       0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Kamaitachi",     0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Wanyudo",        0, 1);
+        trProtounitAddTrain("TempleOvergrown", 1, "Tengu",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Oni",            0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Raiju",          0, 2);
+        trProtounitAddTrain("TempleOvergrown", 1, "Asura",          0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Shinigami",      0, 3);
+        trProtounitAddTrain("TempleOvergrown", 1, "Onmoraki",       0, 3);
 
+        // ---- Greek techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "WingedMessenger",   1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "LabyrinthOfMinos",  1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "SylvanLore",        1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "PredatoryInstinct", 1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "WillOfKronos",      1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "RoarOfOrthus",      1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "ChthonicRites",     1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "HallowedWoodlands", 1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "FaceOfTheGorgon",   1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "FlamesOfTyphon",    1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "HandOfTalos",       1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "ShoulderOfTalos",   1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "EnchantedHymn",     1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "NepheleanHarpy",    1, 4);
+        trProtounitAddTech("TempleOvergrown", 1, "OlympianParentage", 2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "PansPioneers",      2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "TempleOfHealing",   2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "GoldenApples",      2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Dionysia",          2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Oracle",            2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "MonstrousRage",     2, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "PiousSacrifice",    2, 3);
+        // ---- Egyptian techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "HandsOfThePharaoh", 1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "FeetOfTheJackal",   1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Criosphinx",        1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Hieracosphinx",     1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "FuneralRites",      1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "Crocodilopolis",    1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "AtefCrown",         1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "NewKingdom",        1, 4);
+        trProtounitAddTech("TempleOvergrown", 1, "Clairvoyance",      2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "Shaduf",            2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Necropolis",        2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "SpiritOfMaat",      2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "CrimsonLinen",      2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "Nebty",             2, 3);
+        // ---- Norse techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "HallOfThanes",      1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "Safeguard",         1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "AvengingSpirit",    1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "EyesInTheForest",   2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "Gjallarhorn",       1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "CaveTroll",         1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Disablot",          1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Valgaldr",          1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "GraniteMaw",        1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "Rime",              1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "Jotuns",            1, 4);
+        trProtounitAddTech("TempleOvergrown", 1, "ThurisazRune",      2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "NineWaves",         2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "FeastsOfRenown",    2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "Rampage",           2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "GraniteBlood",      2, 3);
+        // ---- Atlantean techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "Channels",          1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "TemporalChaos",     1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "EmpyreanSpeed",     1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "AlluvialClay",      1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "HephaestusRevenge", 1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "Gemini",            1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "RheiasGift",        1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "AsperBlood",        1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "GuardianOfIo",      1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "Titanomachy",       1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "Celerity",          1, 4);
+        trProtounitAddTech("TempleOvergrown", 1, "MythicRejuvenation",1, 5);
+        trProtounitAddTech("TempleOvergrown", 1, "Perception",        2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "VolcanicForge",     2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "HeartOfTheTitans",  2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "PropheticSight",    2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "SonsOfTheSun",      2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "HeroicRenewal",     2, 3);
+        // ---- Chinese techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "DivineLight",       1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "EastWind",          1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "SkyFire",           1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "QiLinsBlessing",    1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "SonOfLoong",        1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "RageOfSlaughter",   1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "SinisterDefiance",  1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "FrenziedDash",      1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "BottomlessStomach", 1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "RisingTide",        1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "PowerOfChaos",      1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "SongOfMidsummer",   1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "FlamingBlood",      1, 4);
+        trProtounitAddTech("TempleOvergrown", 1, "Reincarnation",     2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "SpoilsOfWar",       2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "RockSolid",         2, 3);
+        // ---- Japanese techs ----
+        trProtounitAddTech("TempleOvergrown", 1, "WisdomOfNine",       1, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "WindSickles",        1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "CondemnedSoul",      1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "DeadlySnare",        1, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "AsceticPractices",   1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "ThunderousPresence", 1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "DeadlyRage",         1, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "BurningMalevolence", 1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "RestlessArmy",       1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "EternalHaunting",    1, 3);
+        trProtounitAddTech("TempleOvergrown", 1, "CrushingWaves",      2, 0);
+        trProtounitAddTech("TempleOvergrown", 1, "IvoryNetsuke",       2, 1);
+        trProtounitAddTech("TempleOvergrown", 1, "DenDenDrums",        2, 2);
+        trProtounitAddTech("TempleOvergrown", 1, "OniMask",            2, 2);
+        // ---- Shared / final tier ----
+        trProtounitAddTech("TempleOvergrown", 1, "Omniscience",        2, 5);
     }
 
     xsEnableRule("APApplyItems");
@@ -2399,6 +2728,86 @@ runImmediately
     APRelicCounterInit();
     APInitSentChecks();
     trMusicPlayCurrent();
+    xsDisableSelf();
+}
+
+// APApplyDLCCivSwap — second stage of the DLC major-god civ swap kicked off by
+// APSetPlayerCiv.  Waits ~1s after the trPlayerSetCiv(1, "Nature") call so
+// the engine has time to register the swap, then sets the DLC civ + flips
+// ArchaicAge<God> to status 2, force-disables every civ's age techs again
+// (since trPlayerSetCiv re-enables them), and finally calls
+// APActivateScenarioStage2 to run the rest of the per-scenario bootstrap.
+rule APApplyDLCCivSwap
+highFrequency
+inactive
+{
+    if (xsGetTime() - gAPDLCSwapTime < 1) { return; }
+
+    if (gAPMajorGod == cAPMajorDemeter)
+    {
+        trPlayerSetCiv(1, "Demeter");
+        trTechSetStatus(1, kbTechGetID("ArchaicAgeDemeter"), 2);
+    }
+    if (gAPMajorGod == cAPMajorFreyr)
+    {
+        trPlayerSetCiv(1, "Freyr");
+        trTechSetStatus(1, kbTechGetID("ArchaicAgeFreyr"), 2);
+    }
+    APForceDisableAllGreekAgeTechs();
+    APForceDisableAllEgyptianAgeTechs();
+    APForceDisableAllNorseAgeTechs();
+    APForceDisableAllAtlanteanAgeTechs();
+
+    // Vanilla civ buildings stay constructible after the civ swap (scenario
+    // editor pre-grants them at status 2 and trPlayerSetCiv doesn't revoke
+    // building access).  When the DLC god's civ differs from the vanilla
+    // god's civ, forbid every classical+heroic military building of the
+    // vanilla civ, plus Mercenary / MercenaryCavalry which leak through the
+    // Egyptian archaic unit forbid.
+    int vanillaGod = APGetMajorGodForScenario(gAPScenarioId);
+    int vanillaCiv = 0;  // 1=Greek 2=Egyptian 3=Norse 4=Atlantean
+    if (vanillaGod >= 1 && vanillaGod <= 3)  { vanillaCiv = 1; }
+    if (vanillaGod == 13)                    { vanillaCiv = 1; }
+    if (vanillaGod >= 4 && vanillaGod <= 6)  { vanillaCiv = 2; }
+    if (vanillaGod >= 7 && vanillaGod <= 9)  { vanillaCiv = 3; }
+    if (vanillaGod == 14)                    { vanillaCiv = 3; }
+    if (vanillaGod >= 10 && vanillaGod <= 12){ vanillaCiv = 4; }
+    int dlcCiv = 0;
+    if (gAPMajorGod == cAPMajorDemeter) { dlcCiv = 1; }
+    if (gAPMajorGod == cAPMajorFreyr)   { dlcCiv = 3; }
+    if (vanillaCiv != dlcCiv)
+    {
+        if (vanillaCiv == 1)  // Greek
+        {
+            trForbidProtounit(1, "MilitaryAcademy");
+            trForbidProtounit(1, "ArcheryRange");
+            trForbidProtounit(1, "Stable");
+            trForbidProtounit(1, "Fortress");
+        }
+        if (vanillaCiv == 2)  // Egyptian
+        {
+            trForbidProtounit(1, "Barracks");
+            trForbidProtounit(1, "MigdolStronghold");
+            trForbidProtounit(1, "SiegeWorks");
+            trForbidProtounit(1, "Mercenary");
+            trForbidProtounit(1, "MercenaryCavalry");
+        }
+        if (vanillaCiv == 3)  // Norse
+        {
+            trForbidProtounit(1, "Longhouse");
+            trForbidProtounit(1, "GreatHall");
+            trForbidProtounit(1, "HillFort");
+        }
+        if (vanillaCiv == 4)  // Atlantean
+        {
+            trForbidProtounit(1, "MilitaryBarracks");
+            trForbidProtounit(1, "CounterBarracks");
+            trForbidProtounit(1, "Palace");
+        }
+    }
+
+    gAPDLCSwapPending = false;
+    xsEnableRule("APActivateScenarioStage2");
     xsDisableSelf();
 }
 
@@ -2558,14 +2967,17 @@ void APDisableAllGreekAgeTechs()
     if (trTechStatusActive(1, cTechClassicalAgeAthena) == false) { trTechSetStatus(1, cTechClassicalAgeAthena, 0); }
     if (trTechStatusActive(1, cTechClassicalAgeHermes) == false) { trTechSetStatus(1, cTechClassicalAgeHermes, 0); }
     if (trTechStatusActive(1, cTechClassicalAgeAres) == false) { trTechSetStatus(1, cTechClassicalAgeAres, 0); }
+    if (trTechStatusActive(1, cTechClassicalAgePan) == false) { trTechSetStatus(1, cTechClassicalAgePan, 0); }
     if (trTechStatusActive(1, cTechClassicalAgeGreek) == false) { trTechSetStatus(1, cTechClassicalAgeGreek, 0); }
     if (trTechStatusActive(1, cTechHeroicAgeApollo) == false) { trTechSetStatus(1, cTechHeroicAgeApollo, 0); }
     if (trTechStatusActive(1, cTechHeroicAgeDionysus) == false) { trTechSetStatus(1, cTechHeroicAgeDionysus, 0); }
     if (trTechStatusActive(1, cTechHeroicAgeAphrodite) == false) { trTechSetStatus(1, cTechHeroicAgeAphrodite, 0); }
+    if (trTechStatusActive(1, cTechHeroicAgeHestia) == false) { trTechSetStatus(1, cTechHeroicAgeHestia, 0); }
     if (trTechStatusActive(1, cTechHeroicAgeGreek) == false) { trTechSetStatus(1, cTechHeroicAgeGreek, 0); }
     if (trTechStatusActive(1, cTechMythicAgeHera) == false) { trTechSetStatus(1, cTechMythicAgeHera, 0); }
     if (trTechStatusActive(1, cTechMythicAgeHephaestus) == false) { trTechSetStatus(1, cTechMythicAgeHephaestus, 0); }
     if (trTechStatusActive(1, cTechMythicAgeArtemis) == false) { trTechSetStatus(1, cTechMythicAgeArtemis, 0); }
+    if (trTechStatusActive(1, cTechMythicAgePersephone) == false) { trTechSetStatus(1, cTechMythicAgePersephone, 0); }
     if (trTechStatusActive(1, cTechMythicAgeGreek) == false) { trTechSetStatus(1, cTechMythicAgeGreek, 0); }
 }
 
@@ -2793,7 +3205,7 @@ void APApplyAgeUnlocks()
     //   - Leave everything else at status 0
     int scenarioFloor = APGetStartingAgeCount(gAPScenarioId);
     int civCount = 0;
-    if (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades)
+    if (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades || gAPMajorGod == cAPMajorDemeter)
     {
         APApplyGreekMinorGods(gAPMajorGod, greekCount, scenarioFloor);
         APForceDisableAllEgyptianAgeTechs();
@@ -2809,7 +3221,7 @@ void APApplyAgeUnlocks()
         APForceDisableAllAtlanteanAgeTechs();
         civCount = egyptianCount;
     }
-    if (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor || gAPMajorGod == cAPMajorLoki)
+    if (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor || gAPMajorGod == cAPMajorLoki || gAPMajorGod == cAPMajorFreyr)
     {
         APApplyNorseMinorGods(gAPMajorGod, norseCount, scenarioFloor);
         APForceDisableAllGreekAgeTechs();
@@ -3313,7 +3725,7 @@ runImmediately
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Dwarf", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("VillagerDwarf", gReinforcementSpawnID, gReinforcementSpawnID, 1);
             }
         }
         if (itemId == cREINFORCEMENT_MERCENARY)
@@ -3644,20 +4056,20 @@ int APCountPlayer1Relics()
     return (total);
 }
 
-// Formats a float to at most 1 decimal place, stripping trailing zero decimals.
-// Used for trickle amounts in the relic notification chat.
+// Formats a float to at most 2 decimal places, snapping to the nearest 0.25
+// step.  Used for trickle amounts in the relic notification chat.  Favor
+// trickles can be 0.25 increments so we handle .25 / .5 / .75 (the previous
+// version only handled .5 and rounded .25 down to 0).
 string APFormatFloat(float val = 0.0)
 {
     // XS has no cast operators. Extract integer part via subtraction loop.
-    // Safe for the small trickle totals this function is called with.
     int   _i   = 0;
     float _rem = val;
     while (_rem >= 1.0) { _rem = _rem - 1.0; _i = _i + 1; }
-    // All trickle values are multiples of 0.5, so _rem is either ~0 or ~0.5.
-    if (_rem > 0.25)
-    {
-        return ("" + _i + ".5");
-    }
+    if (_rem > 0.875) { return ("" + (_i + 1)); }
+    if (_rem > 0.625) { return ("" + _i + ".75"); }
+    if (_rem > 0.375) { return ("" + _i + ".5"); }
+    if (_rem > 0.125) { return ("" + _i + ".25"); }
     return ("" + _i);
 }
 
@@ -4185,9 +4597,18 @@ inactive
     int trapType = gAPTrapQueue[0];
     APTrapPop();
     APTrapScheduleNext(false);
-    APTrapExecuteTrap(trapType);
-    gAPTrapsFiredCount++;
-    trQuestVarSet("APTrapsFiredThisScenario", gAPTrapsFiredCount);
+    if (APTrapExecuteTrap(trapType))
+    {
+        gAPTrapsFiredCount++;
+        trQuestVarSet("APTrapsFiredThisScenario", gAPTrapsFiredCount);
+    }
+    else
+    {
+        // No valid target this tick — push back to the queue tail and try
+        // again later.  Useful when nothing is built yet (Deconstruction)
+        // or there are no military units (Bolt / Traitor).
+        APTrapPushBack(trapType);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -4236,7 +4657,7 @@ inactive
         trQuestVarSet("rand_gp_1", 0);
         return;
     }
-    APGrantRandGP(gAPRandGP1, n, 45);
+    APGrantRandGP(gAPRandGP1, n, 15);
     trQuestVarSet("rand_gp_1", 0);
 }
 
@@ -4251,7 +4672,7 @@ inactive
         trQuestVarSet("rand_gp_2", 0);
         return;
     }
-    APGrantRandGP(gAPRandGP2, n, 90);
+    APGrantRandGP(gAPRandGP2, n, 30);
     trQuestVarSet("rand_gp_2", 0);
 }
 
@@ -4266,7 +4687,7 @@ inactive
         trQuestVarSet("rand_gp_3", 0);
         return;
     }
-    APGrantRandGP(gAPRandGP3, n, 135);
+    APGrantRandGP(gAPRandGP3, n, 45);
     trQuestVarSet("rand_gp_3", 0);
 }
 
@@ -4281,7 +4702,7 @@ inactive
         trQuestVarSet("rand_gp_4", 0);
         return;
     }
-    APGrantRandGP(gAPRandGP4, n, 180);
+    APGrantRandGP(gAPRandGP4, n, 60);
     trQuestVarSet("rand_gp_4", 0);
 }
 

@@ -1922,6 +1922,7 @@ class aomLocationData(enum.IntEnum):
     GG_1_RELIC_3 = (global_location_id(aomScenarioData.GG_1.id, 12), "Relic 3: North Small Island", aomScenarioData.GG_1, aomLocationType.RELIC)
     GG_1_RELIC_4 = (global_location_id(aomScenarioData.GG_1.id, 13), "Relic 4: East of Northern Settlement", aomScenarioData.GG_1, aomLocationType.RELIC)
     GG_1_RELIC_5 = (global_location_id(aomScenarioData.GG_1.id, 14), "Relic 5: Center Hill of Map", aomScenarioData.GG_1, aomLocationType.RELIC)
+    GG_1_RELIC_6 = (global_location_id(aomScenarioData.GG_1.id, 15), "Relic 6: Behind Folstag's Eastern Hillfort", aomScenarioData.GG_1, aomLocationType.RELIC)
 
     # GG 2 relics
     GG_2_RELIC_1 = (global_location_id(aomScenarioData.GG_2.id, 10), "Relic 1: East on Starting Island", aomScenarioData.GG_2, aomLocationType.RELIC)

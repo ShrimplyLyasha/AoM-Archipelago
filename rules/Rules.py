@@ -189,16 +189,16 @@ def count_civ_unlocks(state: CollectionState, player: int, unlock_names: list[st
 # Godsanity god-to-civ mappings
 # --------------------------------------------------
 
-_GREEK_GOD_IDS     = frozenset({1, 2, 3})
+_GREEK_GOD_IDS     = frozenset({1, 2, 3, 13})
 _EGYPTIAN_GOD_IDS  = frozenset({4, 5, 6})
-_NORSE_GOD_IDS     = frozenset({7, 8, 9})
+_NORSE_GOD_IDS     = frozenset({7, 8, 9, 14})
 _ATLANTEAN_GOD_IDS = frozenset({10, 11, 12})
 _GREEK_FREE_MYTHIC_GODS = _GREEK_GOD_IDS
 
 _GOD_TO_CIV: dict[int, str] = {
-    1: "Greek", 2: "Greek",    3: "Greek",
+    1: "Greek", 2: "Greek",    3: "Greek",     13: "Greek",
     4: "Egyptian", 5: "Egyptian", 6: "Egyptian",
-    7: "Norse",    8: "Norse",    9: "Norse",
+    7: "Norse",    8: "Norse",    9: "Norse",  14: "Norse",
     10: "Atlantean", 11: "Atlantean", 12: "Atlantean",
 }
 
@@ -352,7 +352,9 @@ _HUMAN_UNITS: dict[str, dict[int, list[str]]] = {
     },
     "Norse": {
         0: ["Can train Berserk"],   # archaic, item needed, no unlock required
-        1: ["Can train Hirdman", "Can train Throwing Axeman", "Can train Raiding Cavalry"],
+        # Hirdman intentionally omitted — its unlock item is classified Useful,
+        # not Progression, so it must not gate scenario access here.
+        1: ["Can train Throwing Axeman", "Can train Raiding Cavalry"],
         2: ["Can train Jarl", "Can train Huskarl"],
     },
     "Atlantean": {
