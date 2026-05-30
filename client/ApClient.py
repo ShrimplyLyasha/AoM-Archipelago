@@ -396,11 +396,19 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
         ctx.ui.update_trap_status(len(queue), next_name)
 
     if hasattr(ctx.ui, "update_scenarios_view"):
-        scenario_to_key_id = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
-        bundle_display_names = getattr(ctx.game_ctx, "bundle_display_names", {}) or {}
-        usos = int(getattr(ctx.game_ctx, "unlock_sets_of_scenarios", 0))
-        received = set(ctx.game_ctx.received_items)
-        held_keys = {iid for iid in scenario_to_key_id.values() if iid in received}
+        scenario_to_key_id        = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
+        scenario_to_ring_item_id  = getattr(ctx.game_ctx, "scenario_to_ring_item_id", {}) or {}
+        ring_display_names        = getattr(ctx.game_ctx, "ring_display_names", {}) or {}
+        mk = int(getattr(ctx.game_ctx, "max_keys_on_keyrings", 0))
+        # Per-scenario gate item id — Scenario Key when mk==1, Key Ring when mk>=2.
+        if mk == 1:
+            scenario_to_gate_id = scenario_to_key_id
+            gate_display_names  = {kid: f"key {kid}" for kid in scenario_to_key_id.values()}
+        else:
+            scenario_to_gate_id = scenario_to_ring_item_id
+            gate_display_names  = ring_display_names
+        received  = set(ctx.game_ctx.received_items)
+        held_gates = {iid for iid in scenario_to_gate_id.values() if iid in received}
         from ..items.Items import aomItemData as _IData
         threshold_val = getattr(ctx, "_x_scenarios_threshold", None)
         beaten = _count_beaten_scenarios(ctx)
@@ -425,6 +433,9 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             7: "Odin",   8: "Thor",     9: "Loki",
             10: "Kronos", 11: "Oranos", 12: "Gaia",
             13: "Demeter", 14: "Freyr",
+            15: "Nuwa", 16: "Fuxi", 17: "Shennong",
+            18: "Amaterasu", 19: "Tsukuyomi", 20: "Susanoo",
+            21: "Huitzilopochtli", 22: "Tezcatlipoca", 23: "Quetzalcoatl",
         }
         god_assignments = getattr(ctx.game_ctx, "god_assignments", {}) or {}
         for scenario_id, god_id in god_assignments.items():
@@ -459,8 +470,8 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
                 scenario_check_counts[scenario.global_number] = (found_checks, total_checks)
         
         ctx.ui.update_scenarios_view(
-            usos, scenario_to_key_id, bundle_display_names,
-            held_keys, campaign_unlocked_by_id, disabled_ids,
+            mk, scenario_to_gate_id, gate_display_names,
+            held_gates, campaign_unlocked_by_id, disabled_ids,
             scenario_to_god, scenario_check_counts,
         )
 
@@ -621,24 +632,32 @@ class AoMCommandProcessor(ClientCommandProcessor):
         for name in untouched_list:
             self.output(f"  {name}")
 
-        # Per-scenario key status — only meaningful when unlock_sets_of_scenarios > 0.
-        usos = int(getattr(ctx.game_ctx, "unlock_sets_of_scenarios", 0))
-        if usos > 0:
-            scenario_to_key_id   = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
-            bundle_display_names = getattr(ctx.game_ctx, "bundle_display_names", {}) or {}
-            all_key_ids          = sorted({iid for iid in scenario_to_key_id.values()})
-            held_keys            = {iid for iid in all_key_ids if iid in received}
+        # Per-scenario unlock status — only meaningful when max_keys_on_keyrings > 0.
+        mk = int(getattr(ctx.game_ctx, "max_keys_on_keyrings", 0))
+        if mk > 0:
+            scenario_to_key_id        = getattr(ctx.game_ctx, "scenario_to_key_id", {}) or {}
+            scenario_to_ring_item_id  = getattr(ctx.game_ctx, "scenario_to_ring_item_id", {}) or {}
+            ring_item_id_to_scenarios = getattr(ctx.game_ctx, "ring_item_id_to_scenarios", {}) or {}
+            ring_display_names        = getattr(ctx.game_ctx, "ring_display_names", {}) or {}
 
-            max_bundle = max(
-                (sum(1 for s in aomScenarioData
-                     if scenario_to_key_id.get(s.global_number) == kid)
-                 for kid in all_key_ids),
-                default=usos,
-            )
-            held_count = len(held_keys)
-            total_keys = len(all_key_ids)
-            self.output(f"=== Scenario Keys (max bundle size is {max_bundle}) ===")
-            self.output(f"  Scenario Bundles Found: {held_count}/{total_keys}")
+            if mk == 1:
+                all_gate_ids    = sorted({iid for iid in scenario_to_key_id.values()})
+                held_gates      = {iid for iid in all_gate_ids if iid in received}
+                self.output(f"=== Scenario Keys ===")
+                self.output(f"  Scenario Keys Found: {len(held_gates)}/{len(all_gate_ids)}")
+            else:
+                all_gate_ids    = sorted(ring_item_id_to_scenarios.keys())
+                held_gates      = {iid for iid in all_gate_ids if iid in received}
+                self.output(f"=== Scenario Key Rings (max keys per ring: {mk}) ===")
+                self.output(f"  Key Rings Found: {len(held_gates)}/{len(all_gate_ids)}")
+                self.output("  Ring legend:")
+                for rid in all_gate_ids:
+                    rname = ring_display_names.get(rid, f"Ring {rid}")
+                    sids  = ring_item_id_to_scenarios.get(rid, [])
+                    held_mark = " (held)" if rid in held_gates else ""
+                    sid_to_name = {s.global_number: s.display_name for s in aomScenarioData}
+                    contents = ", ".join(sid_to_name.get(s, str(s)) for s in sids)
+                    self.output(f"    {rname}{held_mark}: {contents}")
             self.output(f"  You Have Keys For:")
             self.output("")
 
@@ -647,8 +666,11 @@ class AoMCommandProcessor(ClientCommandProcessor):
             for scenario in aomScenarioData:
                 if scenario.campaign.id in disabled_ids:
                     continue
-                kid = scenario_to_key_id.get(scenario.global_number)
-                if kid is None or kid not in held_keys:
+                if mk == 1:
+                    gid = scenario_to_key_id.get(scenario.global_number)
+                else:
+                    gid = scenario_to_ring_item_id.get(scenario.global_number)
+                if gid is None or gid not in held_gates:
                     continue
                 self.output(f"  {scenario.display_name}")
 
@@ -843,10 +865,62 @@ class AoMCommandProcessor(ClientCommandProcessor):
     #     of the unit or hero's in-game civilization."""
     #     self._cmd_civ_items("Generic", lambda item: not self._is_civ_item(item))
 
+    def _cmd_chinese(self) -> None:
+        """Show Chinese age progress and received civ-specific items.
+        Includes: age unlocks, unit unlocks, myth unit unlocks.
+        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        self._cmd_civ_progress("Chinese")
+
+    def _cmd_japanese(self) -> None:
+        """Show Japanese age progress and received civ-specific items.
+        Includes: age unlocks, unit unlocks, myth unit unlocks.
+        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        self._cmd_civ_progress("Japanese")
+
+    def _cmd_aztec(self) -> None:
+        """Show Aztec age progress and received civ-specific items.
+        Includes: age unlocks, unit unlocks, myth unit unlocks.
+        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        self._cmd_civ_progress("Aztec")
+
+    def _cmd_civ_progress(self, culture: str) -> None:
+        """Shared implementation for /chinese, /japanese, /aztec."""
+        ctx = self.ctx
+        try:
+            from ..items.Items import aomItemData, AgeUnlock
+        except Exception:
+            self.output("Could not load item data.")
+            return
+        received_set = set(ctx.game_ctx.received_items)
+        age_item = next(
+            (it for it in aomItemData
+             if isinstance(it.type, AgeUnlock)
+             and getattr(it.type, "culture", None) == culture),
+            None
+        )
+        age_count = ctx.game_ctx.received_items.count(age_item.id) if age_item else 0
+        age_names = ["Archaic", "Classical", "Heroic", "Mythic"]
+        self.output(f"Can reach the {culture} {age_names[min(age_count, 3)]} Age")
+        items = [it.item_name for it in aomItemData
+                 if it.id in received_set
+                 and "Age Unlock" not in it.item_name
+                 and (
+                     getattr(getattr(it, "type", None), "culture", None) == culture
+                     or culture in getattr(getattr(it, "type", None), "unit_name", "")
+                 )]
+        if items:
+            self.output(f"Items received ({len(items)}):")
+            for name in items:
+                self.output(f"  {name}")
+
     # Aliases for civ commands
     _cmd_egyptian = _cmd_egypt
     _cmd_atlant   = _cmd_atlantean
     _cmd_atlantis = _cmd_atlantean
+    _cmd_china    = _cmd_chinese
+    _cmd_japan    = _cmd_japanese
+    _cmd_aztecs   = _cmd_aztec
+    _cmd_mexica   = _cmd_aztec
 
     # Aliases for /scenarios
     _cmd_scenario  = _cmd_scenarios
@@ -967,6 +1041,9 @@ class AoMCommandProcessor(ClientCommandProcessor):
             7: "Odin",   8: "Thor",     9: "Loki",
             10: "Kronos", 11: "Oranos", 12: "Gaia",
             13: "Demeter", 14: "Freyr",
+            15: "Nuwa", 16: "Fuxi", 17: "Shennong",
+            18: "Amaterasu", 19: "Tsukuyomi", 20: "Susanoo",
+            21: "Huitzilopochtli", 22: "Tezcatlipoca", 23: "Quetzalcoatl",
         }
         # Scenario names keyed by APScenarioID.
         # FotT uses IDs 1-32, New Atlantis 501-512, Golden Gift 601-604.
@@ -1073,6 +1150,33 @@ class AoMCommandProcessor(ClientCommandProcessor):
                 )
                 types = types + (AtlanteanUnitUnlockProgression,
                                  AtlanteanUnitUnlockUseful, AtlanteanMythUnitUnlock)
+            except (ImportError, AttributeError):
+                pass
+            try:
+                from ..items.Items import (
+                    ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
+                    ChineseMythUnitUnlock,
+                )
+                types = types + (ChineseUnitUnlockProgression,
+                                 ChineseUnitUnlockUseful, ChineseMythUnitUnlock)
+            except (ImportError, AttributeError):
+                pass
+            try:
+                from ..items.Items import (
+                    JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
+                    JapaneseMythUnitUnlock,
+                )
+                types = types + (JapaneseUnitUnlockProgression,
+                                 JapaneseUnitUnlockUseful, JapaneseMythUnitUnlock)
+            except (ImportError, AttributeError):
+                pass
+            try:
+                from ..items.Items import (
+                    AztecUnitUnlockProgression, AztecUnitUnlockUseful,
+                    AztecMythUnitUnlock,
+                )
+                types = types + (AztecUnitUnlockProgression,
+                                 AztecUnitUnlockUseful, AztecMythUnitUnlock)
             except (ImportError, AttributeError):
                 pass
             return types
@@ -1372,20 +1476,38 @@ class AoMContext(CommonContext):
         self.game_ctx.shop_item_details     = {int(k): v for k, v in slot_data.get("shop_item_details", {}).items()}
         self.game_ctx.shop_hint_config      = slot_data.get("shop_hint_config", {})
 
-        # Scenario-key bundling
-        self.game_ctx.unlock_sets_of_scenarios = int(slot_data.get("unlock_sets_of_scenarios", 0))
+        # Scenario unlock items: per-scenario Scenario Keys (max==1) or Key
+        # Rings (max>=2).  See aom/__init__.py::_generate_keyring_assignments.
+        self.game_ctx.max_keys_on_keyrings = int(slot_data.get("max_keys_on_keyrings", 0))
         raw_s2k = slot_data.get("scenario_to_key_id", {})
         self.game_ctx.scenario_to_key_id = (
             {int(k): int(v) for k, v in raw_s2k.items()} if raw_s2k else {}
         )
-        raw_bdn = slot_data.get("bundle_display_names", {})
-        self.game_ctx.bundle_display_names = (
-            {int(k): str(v) for k, v in raw_bdn.items()} if raw_bdn else {}
+        raw_s2r = slot_data.get("scenario_to_ring_item_id", {})
+        self.game_ctx.scenario_to_ring_item_id = (
+            {int(k): int(v) for k, v in raw_s2r.items()} if raw_s2r else {}
         )
-        self.game_ctx.starter_bundle_key_id = slot_data.get("starter_bundle_key_id")
-        self._unlock_sets_of_scenarios = self.game_ctx.unlock_sets_of_scenarios
-        self._scenario_to_key_id = self.game_ctx.scenario_to_key_id
-        self._bundle_display_names = self.game_ctx.bundle_display_names
+        raw_r2s = slot_data.get("ring_item_id_to_scenarios", {})
+        self.game_ctx.ring_item_id_to_scenarios = (
+            {int(k): [int(x) for x in v] for k, v in raw_r2s.items()} if raw_r2s else {}
+        )
+        raw_rdn = slot_data.get("ring_display_names", {})
+        self.game_ctx.ring_display_names = (
+            {int(k): str(v) for k, v in raw_rdn.items()} if raw_rdn else {}
+        )
+        _starter_ring = slot_data.get("starter_ring_item_id", None)
+        self.game_ctx.starter_ring_item_id = int(_starter_ring) if _starter_ring else 0
+        _raw_ssk = slot_data.get("starter_scenario_key_ids", [])
+        self.game_ctx.starter_scenario_key_ids = (
+            [int(x) for x in _raw_ssk] if _raw_ssk else []
+        )
+        raw_kdl = slot_data.get("scenario_to_key_delivery_loc_id", {})
+        self.game_ctx.scenario_to_key_delivery_loc_id = (
+            {int(k): int(v) for k, v in raw_kdl.items()} if raw_kdl else {}
+        )
+        # Convenience: ApClient-local mirrors (used by the UI refresh loop).
+        self._max_keys_on_keyrings = self.game_ctx.max_keys_on_keyrings
+        self._scenario_to_key_id   = self.game_ctx.scenario_to_key_id
         from ..locations.Locations import SHOP_SLOT_ORDER
         self.game_ctx.shop_slot_order       = list(SHOP_SLOT_ORDER)
         _update_atlantis_ui(self)
@@ -1433,6 +1555,40 @@ class AoMContext(CommonContext):
                     self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
                 )
             item_ids.append(item_id)
+
+        # Key Ring fan-out — when a Scenario Key Ring item arrives, queue a
+        # LocationChecks on every `Key for ...` virtual location for the
+        # scenarios this ring carries.  The server delivers each Scenario
+        # Key item back to the player and broadcasts a standard ItemSend
+        # event ("test found their <Scenario> Scenario Key (Key for ...)") to
+        # every player in the room — same UX as gem-shop purchases.
+        # Skipped on the connect-time resend (index==0) to avoid spam; the
+        # initial sweep already re-fires LocationChecks for items received
+        # before the disconnect, so any keys earned earlier are still claimed.
+        if index > 0:
+            ring_id_to_scenarios = getattr(
+                self.game_ctx, "ring_item_id_to_scenarios", {}
+            ) or {}
+            scenario_to_kd = getattr(
+                self.game_ctx, "scenario_to_key_delivery_loc_id", {}
+            ) or {}
+            if ring_id_to_scenarios and scenario_to_kd:
+                _kd_locs: list[int] = []
+                for _rid in item_ids:
+                    _sids = ring_id_to_scenarios.get(_rid)
+                    if not _sids:
+                        continue
+                    for _sid in _sids:
+                        _kd = scenario_to_kd.get(_sid)
+                        # Only check locations the player hasn't already
+                        # claimed (avoid duplicate-check warnings from the
+                        # server when a ring is re-received during a reconnect).
+                        if _kd is not None and _kd not in self.checked_locations:
+                            _kd_locs.append(_kd)
+                if _kd_locs:
+                    Utils.async_start(
+                        self.send_msgs([{"cmd": "LocationChecks", "locations": _kd_locs}])
+                    )
 
         PROG_INFO_ID = 9997
         old_info_level = self.game_ctx.received_items.count(PROG_INFO_ID)

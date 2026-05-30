@@ -83,6 +83,19 @@ class _BeveledToggleButton(ToggleButton):
         super().__init__(**kw)
         self._base_bg = tuple(kw.get("background_color", (1, 1, 1, 1)))
         self._locked  = False
+        # Suppress Kivy's built-in Button background so we can layer:
+        #   canvas.before  -> our own bg rect, then slashes (stencil-clipped)
+        #   canvas (main)  -> Kivy renders the text texture on top
+        #   canvas.after   -> bevel highlights/shadows
+        # This puts the diagonal slashes IN FRONT of the bg but BEHIND the text.
+        self.background_normal = ""
+        self.background_down   = ""
+        self.background_disabled_normal = ""
+        self.background_disabled_down   = ""
+        self.background_color = (0, 0, 0, 0)
+        with self.canvas.before:
+            self._own_bg_col  = Color(*self._base_bg)
+            self._own_bg_rect = Rectangle(pos=(0, 0), size=(0, 0))
         # Two-layer bevel: outer thick highlight/shadow + inner thin pair for depth.
         with self.canvas.after:
             self._hi_col    = Color(1, 1, 1, 0.55)
@@ -105,7 +118,7 @@ class _BeveledToggleButton(ToggleButton):
             self._slash_clip1 = Rectangle(pos=(0, 0), size=(0, 0))
             StencilUse()
             self._slash_col = Color(0, 0, 0, 0.0)  # alpha 0 = hidden by default
-            self._slash_lines = [Line(points=[0, 0, 0, 0], width=2) for _ in range(_SLASH_COUNT)]
+            self._slash_lines = [Line(points=[0, 0, 0, 0], width=dp(2.5)) for _ in range(_SLASH_COUNT)]
             StencilUnUse()
             self._slash_clip2 = Rectangle(pos=(0, 0), size=(0, 0))
             StencilPop()
@@ -113,16 +126,18 @@ class _BeveledToggleButton(ToggleButton):
         self._update_edges()
 
     def set_locked(self, locked: bool) -> None:
-        """Toggle the locked overlay: mute the background to ~35% brightness
+        """Toggle the locked overlay: desaturate the background to grayscale
         and draw diagonal black slashes across the face."""
         self._locked = bool(locked)
         if self._locked:
             r, g, b, a = self._base_bg
-            self.background_color = (r * 0.35, g * 0.35, b * 0.35, a)
-            self._slash_col.rgba = (0, 0, 0, 0.85)
+            lum = 0.30 * r + 0.59 * g + 0.11 * b
+            gray = lum * 0.55
+            self._own_bg_col.rgba = (gray, gray, gray, a)
+            self._slash_col.rgba  = (0, 0, 0, 0.9)
         else:
-            self.background_color = self._base_bg
-            self._slash_col.rgba = (0, 0, 0, 0.0)
+            self._own_bg_col.rgba = self._base_bg
+            self._slash_col.rgba  = (0, 0, 0, 0.0)
         self._update_edges()
 
     def _update_edges(self, *_):
@@ -148,10 +163,12 @@ class _BeveledToggleButton(ToggleButton):
         self._hi2_left.points  = [x + 4,     y + 3,       x + 4,       y + h - 3]
         self._sh2_bot.points   = [x + 3,     y + 4,       x + w - 3,   y + 4]
         self._sh2_right.points = [x + w - 4, y + 3,       x + w - 4,   y + h - 3]
+        # Own background rectangle.
+        self._own_bg_rect.pos  = (x, y); self._own_bg_rect.size = (w, h)
         # Stencil clip + diagonal slashes (hidden via alpha=0 when unlocked).
         self._slash_clip1.pos  = (x, y); self._slash_clip1.size = (w, h)
         self._slash_clip2.pos  = (x, y); self._slash_clip2.size = (w, h)
-        spacing  = 12
+        spacing  = dp(14)
         i        = 0
         x_start  = -h
         while x_start < w and i < len(self._slash_lines):
@@ -199,13 +216,15 @@ class _WrapTabBar(BoxLayout):
         self._buttons  = []
         self._contents = []
 
-    def add_tab(self, text: str, rgba: tuple, content) -> int:
+    def add_tab(self, text: str, rgba: tuple, content, text_color: tuple | None = None) -> int:
         idx = len(self._buttons)
         btn = _BeveledToggleButton(
             text=text, group=self._btn_group, markup=True,
             size_hint_y=None, height=self._btn_height,
             background_color=rgba, background_normal="", background_down="",
         )
+        if text_color is not None:
+            btn.color = text_color
         btn.bind(on_press=lambda _b, i=idx: self.select(i))
         self._btn_grid.add_widget(btn)
         self._buttons.append(btn)
@@ -237,10 +256,18 @@ _GOD_TO_CIV_COLOR: dict = {
     "Zeus": "4D4DFF", "Poseidon": "4D4DFF", "Hades": "4D4DFF", "Demeter": "4D4DFF",
     # Egyptian (yellow)
     "Isis": "FFE033", "Ra": "FFE033", "Set": "FFE033",
-    # Norse (rusty red / brown)
-    "Odin": "CC7070", "Thor": "CC7070", "Loki": "CC7070", "Freyr": "CC7070",
+    # Norse (dark rusty brown) — RGB 100,70,70.  Darker than Aztec orange and
+    # paired with a white outline below so they're easy to tell apart on the
+    # Scenarios tab.
+    "Odin": "644646", "Thor": "644646", "Loki": "644646", "Freyr": "644646",
     # Atlantean (teal)
     "Kronos": "00FFFF", "Oranos": "00FFFF", "Gaia": "00FFFF",
+    # Chinese (pink)
+    "Nuwa": "FF69B4", "Fuxi": "FF69B4", "Shennong": "FF69B4",
+    # Japanese (forest green)
+    "Amaterasu": "166E2D", "Tsukuyomi": "166E2D", "Susanoo": "166E2D",
+    # Aztec (orange) — RGB 255,140,0
+    "Huitzilopochtli": "FF8C00", "Tezcatlipoca": "FF8C00", "Quetzalcoatl": "FF8C00",
 }
 
 # RGB triples (0-1) per campaign for the Scenarios tab tiles.
@@ -366,10 +393,10 @@ class AoMManager(GameManager):
 
     def update_scenarios_view(
         self,
-        unlock_sets_of_scenarios: int,
-        scenario_to_key_id: dict,
-        bundle_display_names: dict,
-        held_keys: set,
+        max_keys_on_keyrings: int,
+        scenario_to_gate_id: dict,
+        gate_display_names: dict,
+        held_gates: set,
         campaign_unlocked_by_id: dict,
         disabled_campaign_ids: set,
         scenario_to_god: dict = None,
@@ -379,11 +406,14 @@ class AoMManager(GameManager):
         builds the grid; on subsequent calls, just recolors tiles.
 
         Args:
-            unlock_sets_of_scenarios: option value (0 means option is off; tab
+            max_keys_on_keyrings:     option value (0 means option is off; tab
                 still renders but tile state collapses to campaign-only).
-            scenario_to_key_id:       scenario global_number → AP item id.
-            bundle_display_names:     AP item id → friendly bundle name.
-            held_keys:                set of AP item ids the player has.
+            scenario_to_gate_id:      scenario global_number → AP item id that
+                gates it (Scenario Key id when max==1, Key Ring id when max>=2).
+            gate_display_names:       AP gate item id → friendly name (unused
+                in render, kept for caller-side debugging).
+            held_gates:               set of AP item ids the player has that
+                gate scenarios (Scenario Keys and/or Key Rings).
             campaign_unlocked_by_id:  campaign.id → bool.
             disabled_campaign_ids:    campaign.id ints to omit entirely.
             scenario_to_god:          scenario global_number → major god name (optional).
@@ -415,7 +445,10 @@ class AoMManager(GameManager):
                 )
                 ov_box.bind(minimum_height=ov_box.setter("height"))
                 ov_scroll.add_widget(ov_box)
-                self._scenarios_tabbar.add_tab("Overview", (0.35, 0.35, 0.35, 0.7), ov_scroll)
+                self._scenarios_tabbar.add_tab(
+                    "Overview", (0.92, 0.92, 0.92, 0.95), ov_scroll,
+                    text_color=(0, 0, 0, 1),
+                )
                 self._scenarios_overview = ov_box
 
                 # Group scenarios by campaign in enum order.
@@ -538,10 +571,10 @@ class AoMManager(GameManager):
             # Recolor every tile based on current state.
             for sid, (tile, color, slash_col, camp_name, name_lbl, god_lbl, checks_lbl) in self._scenario_tile_widgets.items():
                 base = _CAMPAIGN_TILE_COLORS.get(camp_name, (0.5, 0.5, 0.5))
-                kid = scenario_to_key_id.get(sid)
-                key_held = (kid is not None and kid in held_keys)
+                gid = scenario_to_gate_id.get(sid)
+                key_held = (gid is not None and gid in held_gates)
                 # Without the scenario-key option, every scenario is treated as key-held.
-                if unlock_sets_of_scenarios <= 0:
+                if max_keys_on_keyrings <= 0:
                     key_held = True
                 from ..locations.Scenarios import aomScenarioData as _SD
                 scen_obj = next((s for s in _SD if s.global_number == sid), None)
@@ -610,9 +643,11 @@ class AoMManager(GameManager):
                     _gcol = _GOD_TO_CIV_COLOR.get(god_name, "FFFFFF")
                     god_lbl.text = f"[i][color={_gcol}]{god_name}[/color][/i]"
                     god_lbl.outline_width = 2
-                    if _gcol == "4D4DFF":   # Greek (blue) → white border
+                    # Dark text colors get a white border for legibility;
+                    # bright text colors get a black border.
+                    if _gcol in ("4D4DFF", "166E2D"):  # Greek / Japanese → white border
                         god_lbl.outline_color = (1, 1, 1, 1)
-                    else:                    # Egyptian / Norse / Atlantean → black
+                    else:                              # Egyptian / Norse / Atlantean / Chinese / Aztec → black border
                         god_lbl.outline_color = (0, 0, 0, 1)
                 else:
                     god_lbl.text = ""
@@ -801,6 +836,9 @@ class AoMManager(GameManager):
         "Egyptian":  "FFE033",   # yellow
         "Norse":     "CC7070",   # rusty red
         "Atlantean": "00FFFF",   # teal
+        "Chinese":   "FF69B4",   # pink
+        "Japanese":  "166E2D",   # forest green
+        "Aztec":     "FF8C00",   # orange
     }
 
     def build_civs_tab(self) -> None:
@@ -860,6 +898,9 @@ class AoMManager(GameManager):
                 UnitUnlockProgression, UnitUnlockUseful,
                 MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
                 AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful, AtlanteanMythUnitUnlock,
+                ChineseUnitUnlockProgression, ChineseUnitUnlockUseful, ChineseMythUnitUnlock,
+                JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful, JapaneseMythUnitUnlock,
+                AztecUnitUnlockProgression, AztecUnitUnlockUseful, AztecMythUnitUnlock,
                 VillagerCarryCapacity,
                 StartingResources, StartingResourcesLarge,
                 PassiveIncome, PassiveIncomeLarge,
@@ -884,10 +925,10 @@ class AoMManager(GameManager):
             received_s = set(received_ids)
 
             # --- Determine active civs -------------------------------------------
-            _CIV_ORDER  = ["Generic", "Greek", "Egyptian", "Norse", "Atlantean"]
+            _CIV_ORDER  = ["Generic", "Greek", "Egyptian", "Norse", "Atlantean", "Chinese", "Japanese", "Aztec"]
             active_civs = []
             for _civ in _CIV_ORDER:
-                if _civ == "Atlantean" and not random_major_gods:
+                if _civ in ("Atlantean", "Chinese", "Japanese", "Aztec") and not random_major_gods:
                     continue
                 if _civ != "Generic" and _civ in excluded_civs:
                     continue
@@ -899,15 +940,22 @@ class AoMManager(GameManager):
                 UnitUnlockProgression, UnitUnlockUseful,
                 MythUnitUnlockProgression, MythUnitUnlockUseful, MythUnitUnlockFiller,
                 AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful, AtlanteanMythUnitUnlock,
+                ChineseUnitUnlockProgression, ChineseUnitUnlockUseful, ChineseMythUnitUnlock,
+                JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful, JapaneseMythUnitUnlock,
+                AztecUnitUnlockProgression, AztecUnitUnlockUseful, AztecMythUnitUnlock,
                 VillagerCarryCapacity,
             )
             # Types that are never counted as "in multiworld" items for display
             _SKIP_TYPES = (Victory, Campaign, FinalUnlock, Trap, Gem, ProgressiveShopInfo, ScenarioKey)
             # Unit/myth training unlocks — shown with checkmarks
             _UNIT_TYPES = (UnitUnlockProgression, UnitUnlockUseful,
-                           AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful)
+                           AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
+                           ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
+                           JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
+                           AztecUnitUnlockProgression, AztecUnitUnlockUseful)
             _MYTH_TYPES = (MythUnitUnlockProgression, MythUnitUnlockUseful,
-                           MythUnitUnlockFiller, AtlanteanMythUnitUnlock)
+                           MythUnitUnlockFiller, AtlanteanMythUnitUnlock,
+                           ChineseMythUnitUnlock, JapaneseMythUnitUnlock, AztecMythUnitUnlock)
             # Misc: civ-specific but not unit/myth/age — shown only when received
             _MISC_TYPES = (VillagerCarryCapacity,)
 
@@ -918,7 +966,7 @@ class AoMManager(GameManager):
                     if c:
                         return c
                     un = getattr(t, "unit_name", "")
-                    for _c in ("Greek", "Egyptian", "Norse", "Atlantean"):
+                    for _c in ("Greek", "Egyptian", "Norse", "Atlantean", "Chinese", "Japanese", "Aztec"):
                         if _c in un:
                             return _c
                 return None

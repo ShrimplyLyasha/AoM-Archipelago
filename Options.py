@@ -145,9 +145,7 @@ class GemShop(Toggle):
 
     When enabled: beating scenarios earns Gems (currency), which are spent in the shop to receive items and hints. The shop scenario is accessible from the campaign menu.
 
-    When disabled: victories award random multiworld items instead of Gems,
-    the shop scenario returns the player to the menu immediately, and no
-    shop-related items or locations are generated.
+    When disabled: victories award random multiworld items instead of Gems and you can't enter the shop.
     """
     internal_name = "gem_shop"
     display_name = "Gem Shop"
@@ -171,11 +169,9 @@ class MaxAdvancementItemsInEachShop(Range):
     """
     Maximum number of advancement items allowed in each non-Marsh shop (Desert, Grass, Hades).
 
-    The Marsh shop never contains advancement items regardless of this setting. Its 15 slots are always restricted to trap/filler/useful. This option only affects how many slots in each of the other 3 shops are *unrestricted* and may receive an advancement item.
+    Set to 0 to forbid advancement items in shops entirely (recommended). Set to 15 to allow every slot in those 3 shops to hold any item.
 
-    Set to 0 to forbid advancement items in shops entirely. Set to 15 to allow every slot in those 3 shops to hold any item.
-
-    Careful setting this too high as you can't grind gems. If you spend your gems unwisely, you could softlock the seed.
+    Careful setting this too high as you can't grind gems. If you spend your gems unwisely, you could softlock the seed. (If that happens you can use JUNK FOOD NIGHT to cheat)
     """
     internal_name = "max_advancement_items_in_each_shop"
     display_name  = "Max Advancement Items In Each Shop"
@@ -190,7 +186,7 @@ class MaxAdvancementItemsInEachShop(Range):
 
 class Random_Major_Gods(Toggle):
     """Randomize the major god for each scenario at generation time. The assigned god determines which techs and minor gods are available.
-Be ready to think on your feat with this turned on."""
+    Think on your feat with this turned on."""
     internal_name = "random_major_gods"
     display_name = "random_major_gods"
     default = 1
@@ -238,12 +234,12 @@ Odysseus:
   - Odysseus Perfect Accuracy  (ranged attacks never miss)
 
 Reginleif:
-  - Reginleif Frost Strike     (arrows progressively freeze the target)
+  - Reginleif Frost Strike     (javelins progressively freeze the target)
   - Reginleif +1 Projectile    (fire an additional javelin)
 
 Kastor (only in pool when New Atlantis campaign is enabled):
   - Kastor Undermines with Attacks  (melee attacks deal large damage over time to buildings)
-  - Kastor Can Summon Soldiers      (Kastor can train Hoplites, Spearmen, Berserks, and Murmillos)
+  - Kastor Can Summon Soldiers      (Kastor can train Hoplites, Spearmen, Berserks, Murmillos, Yari Spearmen, Tlamanih Spearmen, Dao Swordsmen, Prodromos, War Elephants, Jarls, Destroyers, Samurai, Shorn Ones, and Tiger Cavalry)
   - Kastor is a Manor               (Kastor provides +20 population capacity)
 
 disabled (false):
@@ -328,11 +324,38 @@ Only applies when Random Major Gods is enabled."""
     default = 1
 
 
-class MoreFrequentDLCGods(Toggle):
-    """Bias the random god roll toward the DLC majors Demeter (Greek) and Freyr (Norse).
-When enabled, each time Greek is the chosen civilization there is a 50% chance to pick Demeter,
-and each time Norse is the chosen civilization there is a 50% chance to pick Freyr.
+class ChineseMajorGods(Toggle):
+    """Include Chinese major gods in the random major god pool. Turn this off to never play as the Chinese.
+        If you don't have the Chinese DLC, Favored Land won't work for you. Buy the Chinese DLC for best results, but you can still play as these even if you don't have the DLC.
 Only applies when Random Major Gods is enabled."""
+    internal_name = "shuffle_chinese_major_gods"
+    display_name  = "Shuffle Chinese Major Gods"
+    default = 0
+
+
+class JapaneseMajorGods(Toggle):
+    """Include Japanese major gods in the random major god pool. Turn this off to never play as the Japanese.
+    Yes, you can play as the Japanese even if you don't have the Japanese DLC.
+Only applies when Random Major Gods is enabled."""
+    internal_name = "shuffle_japanese_major_gods"
+    display_name  = "Shuffle Japanese Major Gods"
+    default = 0
+
+
+class AztecMajorGods(Toggle):
+    """Include Aztec major gods (Huitzilopochtli, Tezcatlipoca, Quetzalcoatl) in the random major god pool. Turn this off to never play as the Aztecs.
+    Yes, you can play as the Aztecs even if you don't have the Aztec DLC.
+    Only applies when Random Major Gods is enabled."""
+    internal_name = "shuffle_aztec_major_gods"
+    display_name  = "Shuffle Aztec Major Gods"
+    default = 0
+
+
+class MoreFrequentDLCGods(Toggle):
+    """Demeter and Freyr are more likely as random major gods.
+    If the random major god is Greek, you're more likely to play as Demeter and if the random major god is Norse Freyr is more likely.
+    Yes, you can actually play as these even if you don't have the DLC.
+    Only applies when Random Major Gods is enabled."""
     internal_name = "more_frequent_dlc_gods"
     display_name  = "More Frequent DLC Gods"
     default = 0
@@ -340,7 +363,7 @@ Only applies when Random Major Gods is enabled."""
 
 class FottGreekCampaign(Toggle):
     """Include the Fall of the Trident: Greek campaign (scenarios 1-10).
-When disabled, FotT scenarios 1-10 are removed from the pool."""
+When disabled, those 10 scenarios are unplayable and are removed from the pool."""
     internal_name = "fott_greek_campaign"
     display_name  = "FotT Greek Campaign"
     default = 1
@@ -348,7 +371,7 @@ When disabled, FotT scenarios 1-10 are removed from the pool."""
 
 class FottEgyptianCampaign(Toggle):
     """Include the Fall of the Trident: Egyptian campaign (scenarios 11-20).
-When disabled, FotT scenarios 11-20 are removed from the pool."""
+When disabled, those 10 scenarios are unplayable and are removed from the pool."""
     internal_name = "fott_egyptian_campaign"
     display_name  = "FotT Egyptian Campaign"
     default = 1
@@ -356,7 +379,7 @@ When disabled, FotT scenarios 11-20 are removed from the pool."""
 
 class FottNorseCampaign(Toggle):
     """Include the Fall of the Trident: Norse campaign (scenarios 21-30).
-When disabled, FotT scenarios 21-30 are removed from the pool."""
+When disabled, those 10 scenarios are unplayable and are removed from the pool."""
     internal_name = "fott_norse_campaign"
     display_name  = "FotT Norse Campaign"
     default = 1
@@ -364,7 +387,7 @@ When disabled, FotT scenarios 21-30 are removed from the pool."""
 
 class NewAtlantis(Toggle):
     """Include The New Atlantis campaign.
-     When disabled, all 12 New Atlantis scenarios are removed from the pool."""
+     When disabled, those 12 scenarios are unplayable and are removed from the pool."""
     internal_name = "new_atlantis_campaign"
     display_name  = "New Atlantis Campaign"
     default = 0
@@ -372,22 +395,25 @@ class NewAtlantis(Toggle):
 
 class GoldenGift(Toggle):
     """Include The Golden Gift campaign.
-When disabled, all 4 Golden Gift scenarios are removed from the pool."""
+When disabled, those 4 scenarios are unplayable and are removed from the pool."""
     internal_name = "golden_gift_campaign"
     display_name  = "Golden Gift Campaign"
     default = 0
 
 
-class UnlockSetsOfScenarios(Range):
-    """If you set this to more than 0, individual scenarios are locked behind Scenario Key items in addition to the campaign unlock items. Each Scenario Key unlocks a randomly-sized BUNDLE of scenarios (possibly across multiple active campaigns).
+class MaxKeysOnKeyrings(Range):
+    """Maximum number of Scenario Keys carried by a Key Ring item.
 
-The maximum bundle size equals this value but can be smaller too.
-Set to 1 for exactly one key per scenario; set higher for fewer-but-larger bundles.
+When more than 0, every scenario is locked behind a Scenario Key and one or more Scenario Keys are found on Key Ring items.
+When you or any other player in the multiworld finds a Key Ring, every Scenario Key on that ring is delivered to you.
 
-You'll start with 1 bundle of scenarios from your starting campaign. You'll always be able to complete at least 1 scenario in your starting bundle immediately.
-0 disables the feature entirely."""
-    internal_name = "unlock_sets_of_scenarios"
-    display_name  = "Unlock Sets of Scenarios"
+You begin with one starter Key Ring which includes at least one scenario you can attempt immediately. The remaining rings are shuffled into the item pool.
+
+To Turn this Off:
+0 — feature disabled; scenarios are not locked behind keys at all. Unlocking a campaign gives you access to all the scenarios in that branch.
+"""
+    internal_name = "max_keys_on_keyrings"
+    display_name  = "Max Keys on Keyrings"
     range_start   = 0
     range_end     = 12
     default       = 0
@@ -426,6 +452,9 @@ class AomOptions(PerGameCommonOptions):
     shuffle_egyptian_major_gods:     EgyptianMajorGods
     shuffle_norse_major_gods:        NorseMajorGods
     shuffle_atlantean_major_gods:    AtlanteanMajorGods
+    shuffle_chinese_major_gods:      ChineseMajorGods
+    shuffle_japanese_major_gods:     JapaneseMajorGods
+    shuffle_aztec_major_gods:        AztecMajorGods
     more_frequent_dlc_gods:          MoreFrequentDLCGods
     fott_greek_campaign:             FottGreekCampaign
     fott_egyptian_campaign:          FottEgyptianCampaign
@@ -433,4 +462,4 @@ class AomOptions(PerGameCommonOptions):
     new_atlantis_campaign:           NewAtlantis
     golden_gift_campaign:            GoldenGift
     relicsanity:                     Relicsanity
-    unlock_sets_of_scenarios:        UnlockSetsOfScenarios
+    max_keys_on_keyrings:            MaxKeysOnKeyrings

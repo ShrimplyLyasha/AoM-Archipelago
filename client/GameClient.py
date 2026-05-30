@@ -66,6 +66,15 @@ from ..items.Items import (
     AtlanteanMythUnitUnlock,
     AtlanteanUnitUnlockProgression,
     AtlanteanUnitUnlockUseful,
+    ChineseMythUnitUnlock,
+    ChineseUnitUnlockProgression,
+    ChineseUnitUnlockUseful,
+    JapaneseMythUnitUnlock,
+    JapaneseUnitUnlockProgression,
+    JapaneseUnitUnlockUseful,
+    AztecMythUnitUnlock,
+    AztecUnitUnlockProgression,
+    AztecUnitUnlockUseful,
     MythUnitUnlockFiller,
     MythUnitUnlockProgression,
     MythUnitUnlockUseful,
@@ -130,20 +139,64 @@ _MINOR_GOD_MYTH_UNITS: dict[str, str] = {
     "cTechMythicAgeHelios":        "Centimanus",
     "cTechMythicAgeAtlas":         "Argus",
     "cTechMythicAgeHekate":        "Lampades",
+    # Chinese — Classical minors -> myth unit
+    "cTechClassicalAgeXuannu":     "QiLin",
+    "cTechClassicalAgeChiyou":     "YaZi",
+    "cTechClassicalAgeHoutu":      "QiongQi",
+    # Heroic minors
+    "cTechHeroicAgeGoumang":       "TaoWu",
+    "cTechHeroicAgeNuba":          "TaoTie",
+    "cTechHeroicAgeRushou":        "BaiHu",   # Rushou also unlocks PiXiu (registered below)
+    # Mythic minors
+    "cTechMythicAgeGonggong":      "QingLong",
+    "cTechMythicAgeHuangdi":       "HunDun",
+    "cTechMythicAgeZhurong":       "ZhuQue",
+    # Japanese — Classical
+    "cTechClassicalAgeAmeNoUzume":   "Kamaitachi",
+    "cTechClassicalAgeMinakatatomi": "Wanyudo",
+    "cTechClassicalAgeInariOkami":   "Jorogumo",
+    # Heroic
+    "cTechHeroicAgeHachiman":        "Tengu",
+    "cTechHeroicAgeRaijin":          "Raiju",
+    "cTechHeroicAgeFujin":           "Oni",
+    # Mythic
+    "cTechMythicAgeTakemikazuchi":   "Asura",
+    "cTechMythicAgeWatatsumi":       "Shinigami",
+    "cTechMythicAgeOkuninushi":      "Onmoraki",
+    # Aztec — Classical
+    "cTechClassicalAgeHuehuecoyotl":   "Chaneque",
+    "cTechClassicalAgePatecatl":       "CentzonTotochtin",
+    "cTechClassicalAgeMalinalxochitl": "Maquizcoatl",
+    # Heroic
+    "cTechHeroicAgeItzpapalotl":       "ObsidianButterfly",
+    "cTechHeroicAgeCoatlicue":         "Ayotochtli",
+    "cTechHeroicAgeCoyolxauhqui":      "Tzitzimitl",
+    # Mythic
+    "cTechMythicAgeMictlantecutli":    "Tunkuluchu",
+    "cTechMythicAgeTlaloc":            "Ahuizotl",
+    "cTechMythicAgeXolotl":            "SoulGuide",
 }
 # Inverted: unit_proto -> set of all gating minor god techs.
 _MYTH_UNIT_GATING: dict[str, set] = {}
 for _tech, _unit in _MINOR_GOD_MYTH_UNITS.items():
     _MYTH_UNIT_GATING.setdefault(_unit, set()).add(_tech)
+# Chinese Rushou unlocks both BaiHu and PiXiu — register the second unit here
+# since the forward dict only supports one unit per tech key.
+_MYTH_UNIT_GATING.setdefault("PiXiu", set()).add("cTechHeroicAgeRushou")
 
 _ITEM_TO_UNITS: dict[int, list[str]] = {}
 for _item in aomItemData:
     _t = _item.type
     if isinstance(_t, (UnitUnlockProgression, UnitUnlockUseful,
-                       AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful)):
+                       AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful,
+                       ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
+                       JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
+                       AztecUnitUnlockProgression, AztecUnitUnlockUseful)):
         _ITEM_TO_UNITS[_item.id] = [_t.unit_name]
     elif isinstance(_t, (MythUnitUnlockProgression, MythUnitUnlockUseful,
-                         MythUnitUnlockFiller, AtlanteanMythUnitUnlock)):
+                         MythUnitUnlockFiller, AtlanteanMythUnitUnlock,
+                         ChineseMythUnitUnlock, JapaneseMythUnitUnlock,
+                         AztecMythUnitUnlock)):
         _ITEM_TO_UNITS[_item.id] = list(_t.units)
 
 # -----------------------------------------------------------------------
@@ -251,11 +304,20 @@ class AoMGameContext:
     server_known_checks: set[int] = field(default_factory=set)
     # Locked-scenario warnings already shown this connection.
     locked_warning_campaigns: set[str] = field(default_factory=set)
-    # Scenario-key bundling (unlock_sets_of_scenarios option)
-    unlock_sets_of_scenarios: int = 0
-    scenario_to_key_id: dict = field(default_factory=dict)     # scenario_global_number → AP item id
-    bundle_display_names: dict = field(default_factory=dict)   # AP item id → friendly bundle name
-    starter_bundle_key_id: int | None = None
+    # Scenario unlock items (max_keys_on_keyrings option).
+    #   max == 0 -> feature off; none of these fields are populated.
+    #   max == 1 -> per-scenario Scenario Key items in the multiworld.
+    #   max >= 2 -> Scenario Key Ring items in the multiworld; each ring
+    #              carries 1..max scenario keys, fan-out happens client-side
+    #              when a ring item arrives.
+    max_keys_on_keyrings: int = 0
+    scenario_to_key_id: dict = field(default_factory=dict)        # scenario global_number → Scenario Key item id (always populated when max>0)
+    scenario_to_ring_item_id: dict = field(default_factory=dict)  # scenario global_number → Key Ring item id (max>=2 only)
+    ring_item_id_to_scenarios: dict = field(default_factory=dict) # Key Ring item id → list[scenario global_number] (max>=2 only)
+    ring_display_names: dict = field(default_factory=dict)        # Key Ring item id → friendly ring name (max>=2 only)
+    starter_ring_item_id: int = 0                                  # precollected starter ring (max>=2)
+    starter_scenario_key_ids: list = field(default_factory=list)  # precollected starter Scenario Keys (max==1)
+    scenario_to_key_delivery_loc_id: dict = field(default_factory=dict)  # scenario global_number → "Key for ..." location id (max>=2)
     # Reserved for compatibility with older logic. The runtime log parser now
     # scans from byte 0 on every poll after the connect-time log purge.
     log_start_offset: int = 0
@@ -486,18 +548,27 @@ _GOD_TO_CIV = {
     7: "Norse", 8: "Norse", 9: "Norse",          # Thor, Odin, Loki
     14: "Norse",                                 # Freyr
     10: "Atlantean", 11: "Atlantean", 12: "Atlantean",  # Kronos, Oranos, Gaia
+    15: "Chinese", 16: "Chinese", 17: "Chinese", # Nuwa, Fuxi, Shennong
+    18: "Japanese", 19: "Japanese", 20: "Japanese", # Amaterasu, Tsukuyomi, Susanoo
+    21: "Aztec", 22: "Aztec", 23: "Aztec",       # Huitzilopochtli, Tezcatlipoca, Quetzalcoatl
 }
 _CLASSICAL_BLDGS = {
     "Greek":     ["MilitaryAcademy", "ArcheryRange", "Stable"],
     "Egyptian":  ["Barracks"],
     "Norse":     ["Longhouse", "GreatHall"],
     "Atlantean": ["MilitaryBarracks", "CounterBarracks"],
+    "Chinese":   ["MilitaryCamp", "MachineWorkshop"],
+    "Japanese":  ["Guardhouse", "Dojo", "StableJapanese"],
+    "Aztec":     ["WarHut", "NoblesHut"],
 }
 _HEROIC_BLDGS = {
     "Greek":     ["Fortress"],
     "Egyptian":  ["MigdolStronghold", "SiegeWorks"],
     "Norse":     ["HillFort"],
     "Atlantean": ["Palace"],
+    "Chinese":   ["Baolei"],
+    "Japanese":  ["Castle"],
+    "Aztec":     ["GreatTemple"],
 }
 # Scenarios where ally players also need building transforms to match P1's random god.
 # Key = scenario global_number, value = player IDs to transform.
@@ -721,17 +792,25 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     lines.append("}")
 
     # APInitScenarioKeys — sets quest vars APHasKey<scenarioId> = 1 if the
-    # player holds the Scenario Key for that scenario.  When the
-    # unlock_sets_of_scenarios option is 0 this emits a sentinel
-    # APScenarioKeysActive=0 so XS can short-circuit.
+    # player holds the unlock for that scenario.  When
+    # max_keys_on_keyrings == 0 this emits a sentinel APScenarioKeysActive=0
+    # so XS can short-circuit.  When max == 1 the check is against the
+    # per-scenario Scenario Key id; when max >= 2 the check is against the
+    # Key Ring item id carrying that scenario (one ring receipt unlocks
+    # every scenario it bundles).
     lines.append("")
     lines.append("void APInitScenarioKeys()")
     lines.append("{")
-    usos = int(getattr(ctx, "unlock_sets_of_scenarios", 0))
-    lines.append(f'    trQuestVarSet("APScenarioKeysActive", {1 if usos > 0 else 0});')
-    if usos > 0 and ctx.scenario_to_key_id:
+    mk = int(getattr(ctx, "max_keys_on_keyrings", 0))
+    lines.append(f'    trQuestVarSet("APScenarioKeysActive", {1 if mk > 0 else 0});')
+    if mk > 0 and ctx.scenario_to_key_id:
+        scenario_to_ring = getattr(ctx, "scenario_to_ring_item_id", {}) or {}
         for sid, kid in sorted(ctx.scenario_to_key_id.items()):
-            held = 1 if kid in received_set else 0
+            if mk == 1:
+                gate_iid = kid
+            else:
+                gate_iid = scenario_to_ring.get(sid)
+            held = 1 if (gate_iid is not None and gate_iid in received_set) else 0
             lines.append(f'    trQuestVarSet("APHasKey{sid}", {held});')
     lines.append("}")
 

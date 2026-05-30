@@ -234,3 +234,31 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
                 _loc = _ShopLoc(player, _name, _loc_id, shop_region)
                 shop_region.locations.append(_loc)
         connect_regions(menu_region, shop_region)
+
+    # Key Delivery region — only when the Key Ring system is active
+    # (max_keys_on_keyrings >= 2).  Each scenario in an active campaign gets a
+    # "Key for ..." virtual location pre-filled with that scenario's Scenario
+    # Key item.  Client auto-checks these locations when the corresponding
+    # Key Ring item is received, causing the server to broadcast standard
+    # ItemSend events ("test found their <Scenario> Scenario Key") for every
+    # bundled scenario — same UX as gem-shop purchases.
+    _world = multiworld.worlds[player]
+    if int(getattr(_world, "max_keys_on_keyrings", 0)) >= 2:
+        from ..locations.Locations import (
+            KEY_DELIVERY_SCENARIO_TO_LOC_ID as _KD_S2L,
+            location_id_to_name as _lid2name,
+        )
+        from BaseClasses import Location as _KDLoc
+        kd_region = create_region(multiworld, player, "Key Deliveries")
+        for _scen in aomScenarioData:
+            if _scen.campaign in disabled_campaigns:
+                continue
+            _loc_id = _KD_S2L.get(_scen.global_number)
+            if _loc_id is None:
+                continue
+            _name = _lid2name.get(_loc_id)
+            if not _name:
+                continue
+            _loc = _KDLoc(player, _name, _loc_id, kd_region)
+            kd_region.locations.append(_loc)
+        connect_regions(menu_region, kd_region)

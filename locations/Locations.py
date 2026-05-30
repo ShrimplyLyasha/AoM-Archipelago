@@ -2102,3 +2102,45 @@ for _tier, _display, *_ in SHOP_TIER_CONFIGS:
     location_name_to_id[_name] = _loc_id
     location_id_to_name[_loc_id] = _name
 
+
+# -----------------------------------------------------------------------
+# Key delivery locations — used by the Key Ring system (max_keys_on_keyrings >= 2)
+# -----------------------------------------------------------------------
+# When a player receives a Key Ring item from the multiworld, the client
+# auto-checks the corresponding `Key for ...` location for each scenario the
+# ring carries.  Server then delivers each individual Scenario Key item back
+# to the player and broadcasts a standard `ItemSend` event, so every player
+# in the room sees one chat line per delivered Scenario Key (mirroring how
+# the gem shop announces purchases).
+#
+# IDs start at KEY_DELIVERY_BASE_ID and allocate one slot per scenario in
+# `aomScenarioData`.  Locations whose scenario lives in a disabled campaign
+# are still registered in the global lookup tables (so id maps stay stable)
+# but are NOT added to the region graph in Regions.py.
+# -----------------------------------------------------------------------
+KEY_DELIVERY_BASE_ID = 3920100  # well above shop ids, below per-scenario ids
+KEY_DELIVERY_LOCATION_NAMES: dict[int, str] = {}      # scenario global_number → location name
+KEY_DELIVERY_SCENARIO_TO_LOC_ID: dict[int, int] = {}  # scenario global_number → location id
+KEY_DELIVERY_LOC_ID_TO_SCENARIO: dict[int, int] = {}  # reverse
+
+def _key_delivery_short_label(scen) -> str:
+    """Return the short label used in Key delivery location names.
+    FotT campaigns (Greek/Egyptian/Norse/Final, campaign.value 1-4) use the
+    scenario's global_number prefixed with 'FotT'.  Other campaigns use the
+    campaign mnemonic and the per-campaign chapter."""
+    if scen.campaign.value <= 4:
+        return f"FotT {scen.global_number}"
+    return f"{scen.campaign.mnemonic} {scen.chapter}"
+
+from .Scenarios import aomScenarioData as _ScenForKeys
+for _i, _scen in enumerate(_ScenForKeys):
+    _kd_id   = KEY_DELIVERY_BASE_ID + _i
+    _kd_name = f"Key for {_key_delivery_short_label(_scen)}"
+    KEY_DELIVERY_LOCATION_NAMES[_scen.global_number] = _kd_name
+    KEY_DELIVERY_SCENARIO_TO_LOC_ID[_scen.global_number] = _kd_id
+    KEY_DELIVERY_LOC_ID_TO_SCENARIO[_kd_id] = _scen.global_number
+    location_name_to_id[_kd_name] = _kd_id
+    location_id_to_name[_kd_id]   = _kd_name
+
+ALL_KEY_DELIVERY_LOC_IDS: list[int] = list(KEY_DELIVERY_LOC_ID_TO_SCENARIO.keys())
+

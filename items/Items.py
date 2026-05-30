@@ -139,18 +139,25 @@ class FinalUnlock:
 
 @dataclass
 class ScenarioKey:
-    """Per-bundle scenario unlock used when the unlock_sets_of_scenarios option is
-    set above 0.  Each Scenario Key unlocks a bundle of one or more scenarios
-    determined per-seed in `aomWorld.generate_early()`.  The mapping from key
-    item-id to the scenarios it unlocks lives in `world.scenario_to_key_id`
-    (and is shipped via slot_data as `scenario_to_key_id` and `bundle_display_names`).
-
-    Items are pre-registered with stable generic names ("Scenario Key 01" etc.)
-    so AP's static item registries are populated at module load.  The friendly
-    bundle display ("Key to 10. Strangers, NA 8. Cerberus") lives only in
-    slot_data and is rendered by the client/UI.
+    """Per-scenario unlock used when `max_keys_on_keyrings` == 1.  Each
+    Scenario Key unlocks exactly one scenario, with a stable friendly name
+    ("4. A Fine Plan Scenario Key", "NA 2. Atlantis Reborn Scenario Key")
+    registered at module load via SCENARIO_TO_KEY_ID.  When
+    `max_keys_on_keyrings` >= 2, scenario keys are bundled onto KeyRing
+    items instead and ScenarioKey items are not placed into the multiworld
+    (the registry still exists so name/id lookups don't break).
     """
     bundle_index: int
+
+
+@dataclass
+class KeyRing:
+    """Container item used when `max_keys_on_keyrings` >= 2.  Each KeyRing
+    carries 1..max scenario keys (size rolled per ring).  Receiving a
+    KeyRing delivers all carried scenario keys to the player at once.
+    Bundle contents are seed-deterministic and emitted to the client via
+    slot_data (`ring_to_scenarios`)."""
+    ring_index: int
 
 
 @dataclass
@@ -315,6 +322,72 @@ class AtlanteanMythUnitUnlock:
 
 
 @dataclass
+class ChineseUnitUnlockProgression:
+    """Chinese unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class ChineseUnitUnlockUseful:
+    """Chinese unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class ChineseMythUnitUnlock:
+    """Chinese myth unit unlock — only in pool when random_major_gods is enabled."""
+    units: list
+    culture: str
+    age: str
+
+
+@dataclass
+class JapaneseUnitUnlockProgression:
+    """Japanese unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class JapaneseUnitUnlockUseful:
+    """Japanese unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class JapaneseMythUnitUnlock:
+    """Japanese myth unit unlock — only in pool when random_major_gods is enabled."""
+    units: list
+    culture: str
+    age: str
+
+
+@dataclass
+class AztecUnitUnlockProgression:
+    """Aztec unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class AztecUnitUnlockUseful:
+    """Aztec unit unlock — only in pool when random_major_gods is enabled."""
+    unit_name: str
+    culture: str
+
+
+@dataclass
+class AztecMythUnitUnlock:
+    """Aztec myth unit unlock — only in pool when random_major_gods is enabled."""
+    units: list
+    culture: str
+    age: str
+
+
+@dataclass
 class HeroStatBoost:
     """Useful-tier additive stat boost on a hero.  HeroStatBoostFiller is the
     same shape with filler classification.
@@ -459,6 +532,7 @@ item_type_to_classification: dict[type, ItemClassification] = {
     AgeUnlock:              ItemClassification.progression,
     FinalUnlock:            ItemClassification.progression,
     ScenarioKey:            ItemClassification.progression,
+    KeyRing:                ItemClassification.progression,
     Gem:                    ItemClassification.filler,
     ProgressiveShopInfo:    ItemClassification.useful,
     Trap:                   ItemClassification.trap,
@@ -486,6 +560,15 @@ item_type_to_classification: dict[type, ItemClassification] = {
     AtlanteanUnitUnlockProgression: ItemClassification.progression,
     AtlanteanUnitUnlockUseful:      ItemClassification.useful,
     AtlanteanMythUnitUnlock:        ItemClassification.progression,
+    ChineseUnitUnlockProgression:   ItemClassification.progression,
+    ChineseUnitUnlockUseful:        ItemClassification.useful,
+    ChineseMythUnitUnlock:          ItemClassification.progression,
+    JapaneseUnitUnlockProgression:  ItemClassification.progression,
+    JapaneseUnitUnlockUseful:       ItemClassification.useful,
+    JapaneseMythUnitUnlock:         ItemClassification.progression,
+    AztecUnitUnlockProgression:     ItemClassification.progression,
+    AztecUnitUnlockUseful:          ItemClassification.useful,
+    AztecMythUnitUnlock:            ItemClassification.progression,
     StartingEconomyTech:            ItemClassification.useful,
     StartingMilitaryTech:           ItemClassification.useful,
     StartingDockTech:               ItemClassification.filler,
@@ -644,6 +727,9 @@ class aomItemData(enum.IntEnum):
 
     NORSE_AGE_UNLOCK      = 1008, "Progressive Norse Age Unlock",      AgeUnlock("Norse")
     ATLANTEAN_AGE_UNLOCK  = 1011, "Progressive Atlantean Age Unlock", AgeUnlock("Atlantean")  # only in pool when random_major_gods is on
+    CHINESE_AGE_UNLOCK    = 1014, "Progressive Chinese Age Unlock",   AgeUnlock("Chinese")  # only in pool when random_major_gods is on
+    JAPANESE_AGE_UNLOCK   = 1017, "Progressive Japanese Age Unlock",  AgeUnlock("Japanese")  # only in pool when random_major_gods is on
+    AZTEC_AGE_UNLOCK      = 1020, "Progressive Aztec Age Unlock",     AgeUnlock("Aztec")     # only in pool when random_major_gods is on
 
     # -----------------------------------------------------------------------
     # Unit Unlocks
@@ -688,6 +774,34 @@ class aomItemData(enum.IntEnum):
     CAN_TRAIN_ARCUS           = 3245, "Can train Arcus",           AtlanteanUnitUnlockUseful("Arcus", "Atlantean")
     CAN_TRAIN_FANATIC         = 3246, "Can train Fanatic",         AtlanteanUnitUnlockUseful("Fanatic", "Atlantean")
     CAN_TRAIN_DESTROYER       = 3247, "Can train Destroyer",       AtlanteanUnitUnlockUseful("Destroyer", "Atlantean")
+
+    # Chinese unit unlocks — only added to pool when random_major_gods is enabled
+    CAN_TRAIN_DAO_SWORDSMAN   = 3250, "Can train Dao Swordsman",   ChineseUnitUnlockProgression("DaoSwordsman", "Chinese")
+    CAN_TRAIN_GE_HALBERDIER   = 3251, "Can train Ge Halberdier",   ChineseUnitUnlockUseful("GeHalberdier", "Chinese")
+    CAN_TRAIN_WUZU_JAVELINEER = 3252, "Can train Wuzu Javelineer", ChineseUnitUnlockUseful("WuzuJavelineer", "Chinese")
+    CAN_TRAIN_FIRE_ARCHER     = 3253, "Can train Fire Archer",     ChineseUnitUnlockUseful("FireArcher", "Chinese")
+    CAN_TRAIN_CHU_KO_NU       = 3254, "Can train Chu Ko Nu",       ChineseUnitUnlockUseful("ChuKoNu", "Chinese")
+    CAN_TRAIN_WHITE_HORSE_CAVALRY = 3255, "Can train White Horse Cavalry", ChineseUnitUnlockUseful("WhiteHorseCavalry", "Chinese")
+    CAN_TRAIN_TIGER_CAVALRY   = 3256, "Can train Tiger Cavalry",   ChineseUnitUnlockUseful("TigerCavalry", "Chinese")
+
+    # Japanese unit unlocks — only added to pool when random_major_gods is enabled
+    CAN_TRAIN_YARI_SPEARMAN   = 3260, "Can train Yari Spearman",   JapaneseUnitUnlockProgression("YariSpearman", "Japanese")
+    CAN_TRAIN_YUMI_ARCHER     = 3261, "Can train Yumi Archer",     JapaneseUnitUnlockUseful("YumiArcher", "Japanese")
+    CAN_TRAIN_SAMURAI         = 3262, "Can train Samurai",         JapaneseUnitUnlockUseful("Samurai", "Japanese")
+    CAN_TRAIN_NAGINATA_RIDER  = 3263, "Can train Naginata Rider",  JapaneseUnitUnlockUseful("NaginataRider", "Japanese")
+    CAN_TRAIN_YUMI_HORSE_ARCHER = 3264, "Can train Yumi Horse Archer", JapaneseUnitUnlockUseful("YumiHorseArcher", "Japanese")
+    CAN_TRAIN_SHINOBI         = 3265, "Can train Shinobi",         JapaneseUnitUnlockUseful("Shinobi", "Japanese")
+
+    # Aztec unit unlocks — only added to pool when random_major_gods is enabled
+    CAN_TRAIN_TLAMANIH_SPEARMAN = 3270, "Can train Tlamanih Spearman", AztecUnitUnlockProgression("TlamanihSpearman", "Aztec")
+    CAN_TRAIN_QUIMICHIN_SPY    = 3271, "Can train Quimichin Spy",     AztecUnitUnlockUseful("QuimichinSpy", "Aztec")
+    CAN_TRAIN_TEQUIHUA_ARCHER  = 3272, "Can train Tequihua Archer",   AztecUnitUnlockUseful("TequihuaArcher", "Aztec")
+    CAN_TRAIN_COYOTE_WARRIOR   = 3273, "Can train Coyote Warrior",    AztecUnitUnlockUseful("CoyoteWarrior", "Aztec")
+    CAN_TRAIN_OCELOTL_WARRIOR  = 3274, "Can train Ocelotl Warrior",   AztecUnitUnlockUseful("OcelotlWarrior", "Aztec")
+    CAN_TRAIN_EAGLE_WARRIOR    = 3275, "Can train Eagle Warrior",     AztecUnitUnlockUseful("EagleWarrior", "Aztec")
+    CAN_TRAIN_OTONTIN          = 3276, "Can train Otontin",           AztecUnitUnlockUseful("Otontin", "Aztec")
+    CAN_TRAIN_SHORN_ONE        = 3277, "Can train Shorn One",         AztecUnitUnlockUseful("ShornOne", "Aztec")
+    CAN_TRAIN_JAGUAR_RIDER     = 3278, "Can train Jaguar Rider",      AztecUnitUnlockUseful("JaguarRider", "Aztec")
 
     # -----------------------------------------------------------------------
     # Starting Resources
@@ -807,6 +921,21 @@ class aomItemData(enum.IntEnum):
     ATLANTEAN_HEROIC_MYTH_UNITS    = 5026, "Can train Atlantean Heroic Myth Units",    AtlanteanMythUnitUnlock(['Behemoth', 'Satyr', 'StymphalianBird', 'Nereid'], "Atlantean", "Heroic")
     ATLANTEAN_MYTHIC_MYTH_UNITS    = 5027, "Can train Atlantean Mythic Myth Units",    AtlanteanMythUnitUnlock(['Centimanus', 'Argus', 'Lampades', 'ManOWar'], "Atlantean", "Mythic")
 
+    # Chinese myth unit unlocks — only added to pool when random_major_gods is enabled
+    CHINESE_CLASSICAL_MYTH_UNITS   = 5028, "Can train Chinese Classical Myth Units",   ChineseMythUnitUnlock(['QiLin', 'YaZi', 'QiongQi'], "Chinese", "Classical")
+    CHINESE_HEROIC_MYTH_UNITS      = 5029, "Can train Chinese Heroic Myth Units",      ChineseMythUnitUnlock(['TaoWu', 'TaoTie', 'BaiHu', 'PiXiu', 'ChiWen', 'Fei'], "Chinese", "Heroic")
+    CHINESE_MYTHIC_MYTH_UNITS      = 5030, "Can train Chinese Mythic Myth Units",      ChineseMythUnitUnlock(['QingLong', 'HunDun', 'ZhuQue', 'YingLong', 'XuanWu'], "Chinese", "Mythic")
+
+    # Japanese myth unit unlocks — only added to pool when random_major_gods is enabled
+    JAPANESE_CLASSICAL_MYTH_UNITS  = 5031, "Can train Japanese Classical Myth Units",  JapaneseMythUnitUnlock(['Kamaitachi', 'Wanyudo', 'Jorogumo'], "Japanese", "Classical")
+    JAPANESE_HEROIC_MYTH_UNITS     = 5032, "Can train Japanese Heroic Myth Units",     JapaneseMythUnitUnlock(['Tengu', 'Raiju', 'Oni', 'Honengyo'], "Japanese", "Heroic")
+    JAPANESE_MYTHIC_MYTH_UNITS     = 5033, "Can train Japanese Mythic Myth Units",     JapaneseMythUnitUnlock(['Asura', 'Shinigami', 'Onmoraki', 'Umibozu'], "Japanese", "Mythic")
+
+    # Aztec myth unit unlocks — only added to pool when random_major_gods is enabled
+    AZTEC_CLASSICAL_MYTH_UNITS     = 5034, "Can train Aztec Classical Myth Units",     AztecMythUnitUnlock(['Chaneque', 'CentzonTotochtin', 'Maquizcoatl'], "Aztec", "Classical")
+    AZTEC_HEROIC_MYTH_UNITS        = 5035, "Can train Aztec Heroic Myth Units",        AztecMythUnitUnlock(['ObsidianButterfly', 'Ayotochtli', 'Tzitzimitl', 'Axolotl'], "Aztec", "Heroic")
+    AZTEC_MYTHIC_MYTH_UNITS        = 5036, "Can train Aztec Mythic Myth Units",        AztecMythUnitUnlock(['Tunkuluchu', 'Ahuizotl', 'SoulGuide', 'AxolotlMutant', 'Quinametzin'], "Aztec", "Mythic")
+
     # -----------------------------------------------------------------------
     # Starting Tech items — IDs 5100-5103
     # 1 copy of each placed in the pool.
@@ -830,6 +959,21 @@ class aomItemData(enum.IntEnum):
     REINFORCEMENT_HIPPO           = 4032, f"{REINFORCEMENT_AMOUNT} Hippos of Set",     Reinforcement("Hippopotamus",   REINFORCEMENT_AMOUNT)
     REINFORCEMENT_GOLDEN_LION     = 4033, f"{REINFORCEMENT_AMOUNT} Golden Lions",      Reinforcement("GoldenLion",     REINFORCEMENT_AMOUNT)
     REINFORCEMENT_NORSE_GATHERER  = 4034, f"{REINFORCEMENT_AMOUNT} Norse Gatherers",   Reinforcement("VillagerNorse",  REINFORCEMENT_AMOUNT)
+    # Chinese reinforcements
+    REINFORCEMENT_DAO_SWORDSMAN   = 4040, f"{REINFORCEMENT_AMOUNT} Dao Swordsmen",     Reinforcement("DaoSwordsman",    REINFORCEMENT_AMOUNT)
+    REINFORCEMENT_QILIN           = 4041, "1 QiLin",                                   Reinforcement("QiLin",           1)
+    REINFORCEMENT_BAIHU           = 4042, "1 BaiHu",                                   Reinforcement("BaiHu",           1)
+    REINFORCEMENT_QINGLONG        = 4043, "1 QingLong",                                ReinforcementUseful("QingLong",  1)
+    # Japanese reinforcements
+    REINFORCEMENT_YUMI_ARCHER     = 4044, f"{REINFORCEMENT_AMOUNT} Yumi Archers",      Reinforcement("YumiArcher",      REINFORCEMENT_AMOUNT)
+    REINFORCEMENT_JOROGUMO        = 4045, "1 Jorogumo",                                Reinforcement("Jorogumo",        1)
+    REINFORCEMENT_ONI             = 4046, "1 Oni",                                     Reinforcement("Oni",             1)
+    REINFORCEMENT_ASURA           = 4047, "1 Asura",                                   ReinforcementUseful("Asura",     1)
+    # Aztec reinforcements
+    REINFORCEMENT_EAGLE_WARRIOR   = 4048, f"{REINFORCEMENT_AMOUNT} Eagle Warriors",    Reinforcement("EagleWarrior",    REINFORCEMENT_AMOUNT)
+    REINFORCEMENT_CHANEQUE        = 4049, "1 Chaneque",                                Reinforcement("Chaneque",        1)
+    REINFORCEMENT_TZITZIMITL      = 4050, "1 Tzitzimitl",                              Reinforcement("Tzitzimitl",      1)
+    REINFORCEMENT_AHUIZOTL        = 4051, "1 Ahuizotl",                                ReinforcementUseful("Ahuizotl",  1)
 
     # -----------------------------------------------------------------------
     # Hero Stat Boosts — IDs 2000-2599
@@ -1029,6 +1173,15 @@ class aomItemData(enum.IntEnum):
     NORSE_CARRY_FOOD    = 5006, "Norse Villagers Carry +10 Food",    VillagerCarryCapacity("VillagerNorse",    "food",  10)
     NORSE_CARRY_WOOD    = 5007, "Norse Villagers Carry +10 Wood",    VillagerCarryCapacity("VillagerNorse",    "wood",  10)
     NORSE_CARRY_GOLD    = 5008, "Norse Villagers Carry +10 Gold",    VillagerCarryCapacity("VillagerNorse",    "gold",  10)
+    CHINESE_CARRY_FOOD   = 5010, "Chinese Villagers Carry +10 Food",   VillagerCarryCapacity("VillagerChinese",  "food",  10)
+    CHINESE_CARRY_WOOD   = 5011, "Chinese Villagers Carry +10 Wood",   VillagerCarryCapacity("VillagerChinese",  "wood",  10)
+    CHINESE_CARRY_GOLD   = 5012, "Chinese Villagers Carry +10 Gold",   VillagerCarryCapacity("VillagerChinese",  "gold",  10)
+    JAPANESE_CARRY_FOOD  = 5013, "Japanese Villagers Carry +10 Food",  VillagerCarryCapacity("VillagerJapanese", "food",  10)
+    JAPANESE_CARRY_WOOD  = 5014, "Japanese Villagers Carry +10 Wood",  VillagerCarryCapacity("VillagerJapanese", "wood",  10)
+    JAPANESE_CARRY_GOLD  = 5037, "Japanese Villagers Carry +10 Gold",  VillagerCarryCapacity("VillagerJapanese", "gold",  10)
+    AZTEC_CARRY_FOOD     = 5038, "Aztec Villagers Carry +10 Food",     VillagerCarryCapacity("VillagerAztec",    "food",  10)
+    AZTEC_CARRY_WOOD     = 5039, "Aztec Villagers Carry +10 Wood",     VillagerCarryCapacity("VillagerAztec",    "wood",  10)
+    AZTEC_CARRY_GOLD     = 5040, "Aztec Villagers Carry +10 Gold",     VillagerCarryCapacity("VillagerAztec",    "gold",  10)
 
     # -----------------------------------------------------------------------
     # Generic Villager Food Cost Reduction — ID 5009
@@ -1071,20 +1224,25 @@ for item in aomItemData:
 
 
 # -----------------------------------------------------------------------
-# Scenario Keys — bulk dynamic registration (IDs 3600-3999)
+# Scenario Keys — one item per scenario (IDs 3600+)
 # -----------------------------------------------------------------------
-# Eight per-slot banks of 50 keys each (max 8 simultaneous AoM slots).
-# Bank index = (player_number - 1) % 8 effectively, computed in
-# `aomWorld._generate_scenario_bundles`.  Each key is duck-typed (not an
-# enum member) because adding 400 enum entries is unwieldy and we never
-# need them to be members — only the dict lookups and `.id` / `.item_name`
-# / `.type_data` attributes are read by the rest of the codebase.
-# Default names are generic ("Scenario Key 001"); per-seed bundle names
-# replace them at generate_early time.
+# Each scenario in `aomScenarioData` gets its own AP item with a friendly
+# name like "4. A Fine Plan Scenario Key" or "NA 2. Atlantis Reborn Scenario Key".
+# When `max_keys_on_keyrings == 1`, each Scenario Key is placed directly in
+# the multiworld (announced individually as "Player1 found their X. Foo
+# Scenario Key"). When `max_keys_on_keyrings >= 2`, Scenario Key items are
+# NOT placed; KeyRing items carry them instead and `aomWorld._generate_
+# keyring_assignments` decides which scenarios share a ring.
+#
+# `SCENARIO_TO_KEY_ID[global_number] → AP item id`.  IDs are assigned in
+# `aomScenarioData` enum order starting from `SCENARIO_KEY_BASE_ID`, so they
+# are stable across slots and seeds.  Items are duck-typed (not enum members)
+# because the rest of the codebase only reads `.id`/`.item_name`/`.type`/
+# `.type_data`.
 # -----------------------------------------------------------------------
+from ..locations.Scenarios import aomScenarioData as _aomScenarioData
+
 SCENARIO_KEY_BASE_ID    = 3600
-SCENARIO_KEY_BANK_SIZE  = 50
-SCENARIO_KEY_MAX_SLOTS  = 8
 
 class _ScenarioKeyItem:
     """Lightweight stand-in for an `aomItemData` enum member.  Has the same
@@ -1097,11 +1255,56 @@ class _ScenarioKeyItem:
         self.type      = ScenarioKey(bundle_index)
         self.type_data = ScenarioKey
 
-for _i in range(SCENARIO_KEY_BANK_SIZE * SCENARIO_KEY_MAX_SLOTS):
-    _kid  = SCENARIO_KEY_BASE_ID + _i
-    _name = f"Scenario Key {_i + 1:03d}"
-    _obj  = _ScenarioKeyItem(_kid, _name, _i + 1)
+SCENARIO_TO_KEY_ID: dict[int, int] = {}
+SCENARIO_KEY_ID_TO_GLOBAL_NUMBER: dict[int, int] = {}
+
+for _idx, _scen in enumerate(_aomScenarioData):
+    _kid  = SCENARIO_KEY_BASE_ID + _idx
+    _name = f"{_scen.display_name} Scenario Key"
+    _obj  = _ScenarioKeyItem(_kid, _name, _idx + 1)
     NAME_TO_ITEM[_name]      = _obj
     ID_TO_ITEM[_kid]         = _obj
     item_id_to_name[_kid]    = _name
     item_name_to_id[_name]   = _kid
+    SCENARIO_TO_KEY_ID[_scen.global_number]    = _kid
+    SCENARIO_KEY_ID_TO_GLOBAL_NUMBER[_kid]     = _scen.global_number
+
+
+# -----------------------------------------------------------------------
+# Key Rings — bundle items used when `max_keys_on_keyrings` >= 2 (IDs 3700+)
+# -----------------------------------------------------------------------
+# Stable AP items "Scenario Key Ring 1" .. "Scenario Key Ring N", one per
+# possible ring slot.  Per seed only ceil(active_scenarios / max) of them
+# are actually placed; the rest sit dormant in the registry so item IDs
+# stay stable across seeds.  Per-seed contents (ring_id -> list of
+# scenario global numbers) are computed in
+# `aomWorld._generate_keyring_assignments` and emitted via slot_data so
+# the client can fan a single ring receipt out into per-scenario unlocks
+# and notifications.
+# -----------------------------------------------------------------------
+KEY_RING_BASE_ID    = 3700
+MAX_KEY_RINGS       = len(list(_aomScenarioData))  # worst case = 1 ring per scenario
+
+class _KeyRingItem:
+    """Duck-typed KeyRing AP item (parallels _ScenarioKeyItem)."""
+    __slots__ = ("id", "item_name", "type", "type_data")
+    def __init__(self, id: int, item_name: str, ring_index: int) -> None:
+        self.id        = id
+        self.item_name = item_name
+        self.type      = KeyRing(ring_index)
+        self.type_data = KeyRing
+
+RING_INDEX_TO_ITEM_ID: dict[int, int] = {}
+RING_ITEM_ID_TO_INDEX: dict[int, int] = {}
+
+for _i in range(MAX_KEY_RINGS):
+    _ring_index = _i + 1
+    _rid        = KEY_RING_BASE_ID + _i
+    _ring_name  = f"Scenario Key Ring {_ring_index}"
+    _ring_obj   = _KeyRingItem(_rid, _ring_name, _ring_index)
+    NAME_TO_ITEM[_ring_name]      = _ring_obj
+    ID_TO_ITEM[_rid]              = _ring_obj
+    item_id_to_name[_rid]         = _ring_name
+    item_name_to_id[_ring_name]   = _rid
+    RING_INDEX_TO_ITEM_ID[_ring_index] = _rid
+    RING_ITEM_ID_TO_INDEX[_rid]        = _ring_index

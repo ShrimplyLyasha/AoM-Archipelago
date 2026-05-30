@@ -78,6 +78,15 @@ from ..items.Items import (
     StartingResourcesLarge,
     UnitUnlockProgression,
     UnitUnlockUseful,
+    ChineseUnitUnlockProgression,
+    ChineseUnitUnlockUseful,
+    ChineseMythUnitUnlock,
+    JapaneseUnitUnlockProgression,
+    JapaneseUnitUnlockUseful,
+    JapaneseMythUnitUnlock,
+    AztecUnitUnlockProgression,
+    AztecUnitUnlockUseful,
+    AztecMythUnitUnlock,
     # item_type_to_classification,        # UNUSED in Rules.py
 )
 from ..locations.Locations import (
@@ -177,6 +186,15 @@ try:
 except AttributeError:
     ATLANTEAN_UNLOCK_NAMES = []
 
+try:
+    CHINESE_UNLOCK_NAMES  = [aomItemData.CHINESE_AGE_UNLOCK.item_name]
+    JAPANESE_UNLOCK_NAMES = [aomItemData.JAPANESE_AGE_UNLOCK.item_name]
+    AZTEC_UNLOCK_NAMES    = [aomItemData.AZTEC_AGE_UNLOCK.item_name]
+except AttributeError:
+    CHINESE_UNLOCK_NAMES  = []
+    JAPANESE_UNLOCK_NAMES = []
+    AZTEC_UNLOCK_NAMES    = []
+
 
 def count_civ_unlocks(state: CollectionState, player: int, unlock_names: list[str]) -> int:
     """Total number of progressive age unlock items the player has across the
@@ -193,6 +211,9 @@ _GREEK_GOD_IDS     = frozenset({1, 2, 3, 13})
 _EGYPTIAN_GOD_IDS  = frozenset({4, 5, 6})
 _NORSE_GOD_IDS     = frozenset({7, 8, 9, 14})
 _ATLANTEAN_GOD_IDS = frozenset({10, 11, 12})
+_CHINESE_GOD_IDS   = frozenset({15, 16, 17})
+_JAPANESE_GOD_IDS  = frozenset({18, 19, 20})
+_AZTEC_GOD_IDS     = frozenset({21, 22, 23})
 _GREEK_FREE_MYTHIC_GODS = _GREEK_GOD_IDS
 
 _GOD_TO_CIV: dict[int, str] = {
@@ -200,6 +221,9 @@ _GOD_TO_CIV: dict[int, str] = {
     4: "Egyptian", 5: "Egyptian", 6: "Egyptian",
     7: "Norse",    8: "Norse",    9: "Norse",  14: "Norse",
     10: "Atlantean", 11: "Atlantean", 12: "Atlantean",
+    15: "Chinese",   16: "Chinese",   17: "Chinese",
+    18: "Japanese",  19: "Japanese",  20: "Japanese",
+    21: "Aztec",     22: "Aztec",     23: "Aztec",
 }
 
 _CIV_UNLOCK_NAMES: dict[str, list[str]] = {
@@ -207,6 +231,9 @@ _CIV_UNLOCK_NAMES: dict[str, list[str]] = {
     "Egyptian":  EGYPTIAN_UNLOCK_NAMES,
     "Norse":     NORSE_UNLOCK_NAMES,
     "Atlantean": ATLANTEAN_UNLOCK_NAMES,
+    "Chinese":   CHINESE_UNLOCK_NAMES,
+    "Japanese":  JAPANESE_UNLOCK_NAMES,
+    "Aztec":     AZTEC_UNLOCK_NAMES,
 }
 
 # UNUSED: scenario rules look up `_CIV_UNLOCK_NAMES[god_civ]` directly. Kept (commented).
@@ -363,6 +390,26 @@ _HUMAN_UNITS: dict[str, dict[int, list[str]]] = {
         2: ["Can train Contarius", "Can train Arcus", "Can train Destroyer"],
         3: ["Can train Fanatic"],
     },
+    "Chinese": {
+        1: ["Can train Dao Swordsman", "Can train Ge Halberdier",
+            "Can train Wuzu Javelineer", "Can train Fire Archer"],
+        2: ["Can train Chu Ko Nu", "Can train White Horse Cavalry"],
+        3: ["Can train Tiger Cavalry"],
+    },
+    "Japanese": {
+        1: ["Can train Yari Spearman", "Can train Yumi Archer",
+            "Can train Samurai", "Can train Naginata Rider"],
+        2: ["Can train Yumi Horse Archer", "Can train Shinobi"],
+        # Japanese has no Mythic-tier human unit — Mythic logic relies on the
+        # myth-tier item ("Can train Japanese Mythic Myth Units") instead.
+    },
+    "Aztec": {
+        0: ["Can train Quimichin Spy"],   # archaic-trainable HumanSoldier
+        1: ["Can train Tlamanih Spearman", "Can train Tequihua Archer",
+            "Can train Coyote Warrior", "Can train Ocelotl Warrior"],
+        2: ["Can train Eagle Warrior", "Can train Otontin", "Can train Shorn One"],
+        3: ["Can train Jaguar Rider"],
+    },
 }
 
 _MYTH_ITEMS_BY_UNLOCK: dict[str, dict[int, str]] = {
@@ -385,6 +432,21 @@ _MYTH_ITEMS_BY_UNLOCK: dict[str, dict[int, str]] = {
         1: "Can train Atlantean Classical Myth Units",
         2: "Can train Atlantean Heroic Myth Units",
         3: "Can train Atlantean Mythic Myth Units",
+    },
+    "Chinese": {
+        1: "Can train Chinese Classical Myth Units",
+        2: "Can train Chinese Heroic Myth Units",
+        3: "Can train Chinese Mythic Myth Units",
+    },
+    "Japanese": {
+        1: "Can train Japanese Classical Myth Units",
+        2: "Can train Japanese Heroic Myth Units",
+        3: "Can train Japanese Mythic Myth Units",
+    },
+    "Aztec": {
+        1: "Can train Aztec Classical Myth Units",
+        2: "Can train Aztec Heroic Myth Units",
+        3: "Can train Aztec Mythic Myth Units",
     },
 }
 
@@ -419,6 +481,16 @@ if _ATLANTEAN_TYPES:
     _BASE_POINTS[AtlanteanUnitUnlockProgression] = 3.0
     _BASE_POINTS[AtlanteanUnitUnlockUseful]      = 3.0
     _BASE_POINTS[AtlanteanMythUnitUnlock]        = 5.0
+
+_BASE_POINTS[ChineseUnitUnlockProgression]  = 3.0
+_BASE_POINTS[ChineseUnitUnlockUseful]       = 3.0
+_BASE_POINTS[ChineseMythUnitUnlock]         = 5.0
+_BASE_POINTS[JapaneseUnitUnlockProgression] = 3.0
+_BASE_POINTS[JapaneseUnitUnlockUseful]      = 3.0
+_BASE_POINTS[JapaneseMythUnitUnlock]        = 5.0
+_BASE_POINTS[AztecUnitUnlockProgression]    = 3.0
+_BASE_POINTS[AztecUnitUnlockUseful]         = 3.0
+_BASE_POINTS[AztecMythUnitUnlock]           = 5.0
 
 
 def _item_point_value(item: aomItemData) -> float:
@@ -864,6 +936,11 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
                 human_unit_types = human_unit_types + (
                     AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful
                 )
+            human_unit_types = human_unit_types + (
+                ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
+                JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
+                AztecUnitUnlockProgression, AztecUnitUnlockUseful,
+            )
             human_unit_names = {
                 item.item_name for item in aomItemData
                 if isinstance(item.type, human_unit_types)
@@ -1075,15 +1152,11 @@ def set_shop_rules(world) -> None:
     for _ids in prog_slots.values():
         all_prog_slot_ids.update(_ids)
 
-    # Randomly exclude 8-11 shop item locations per shop so AP fills them with
-    # lowest-priority items (filler or trap). Don't exclude progression slots.
-    n_exclude = world.random.randint(8, 11)
-    excludable = [
-        loc_id for loc_id in ALL_SHOP_ITEM_IDS
-        if loc_id not in all_prog_slot_ids
-    ]
-    world.random.shuffle(excludable)
-    excluded_ids = set(excludable[:n_exclude])
+    # EXCLUDED shop slots are precomputed in `aomWorld.generate_early()` and
+    # stored on `world.shop_excluded_ids` so `create_items` can use the exact
+    # count when sizing the useful pool (EXCLUDED slots accept only
+    # filler/trap, never useful).  Fall back to an empty set on older worlds.
+    excluded_ids = set(getattr(world, "shop_excluded_ids", set()))
 
     for loc_id in ALL_SHOP_ITEM_IDS:
         name = location_id_to_name.get(loc_id)
@@ -1103,6 +1176,11 @@ def set_shop_rules(world) -> None:
                 ItemClassification.filler, ItemClassification.useful, ItemClassification.trap
             )
         elif loc_id in filler_only:
+            # progress_type=EXCLUDED tells AP's fill to prefer filler items
+            # here before placing them in unrestricted slots, which prevents
+            # filler from crowding out useful items in useful-capable slots.
+            # item_rule still hard-enforces filler/trap only.
+            loc.progress_type = LocationProgressType.EXCLUDED
             loc.item_rule = lambda item: item.classification in (
                 ItemClassification.filler, ItemClassification.trap
             )
@@ -1140,18 +1218,22 @@ def set_rules(world) -> None:
 
 
 # --------------------------------------------------
-# Scenario key rules (unlock_sets_of_scenarios)
+# Scenario key / key ring rules (max_keys_on_keyrings)
 # --------------------------------------------------
 
 def set_scenario_key_rules(world) -> None:
-    """When `unlock_sets_of_scenarios > 0`, layer a per-scenario key requirement
+    """When `max_keys_on_keyrings > 0`, layer a per-scenario unlock requirement
     on top of the existing section→scenario entrance rules.
 
-    Each active scenario is bundled with 0+ others under one Scenario Key item;
-    `world.scenario_to_key_id` maps scenario global_number → AP item id.  The
-    key item name is looked up from the item id once per scenario.
+    Dispatch:
+      * max == 1: each scenario is gated on its own Scenario Key item
+        (`world.scenario_to_key_id` maps global_number → key item id).
+      * max >= 2: each scenario is gated on the Key Ring item that carries
+        its key (`world.scenario_to_ring_item_id` maps global_number → ring
+        item id).
     """
-    if int(getattr(world, "unlock_sets_of_scenarios", 0)) <= 0:
+    mk = int(getattr(world, "max_keys_on_keyrings", 0))
+    if mk <= 0:
         return
 
     from ..items.Items import ID_TO_ITEM
@@ -1168,21 +1250,28 @@ def set_scenario_key_rules(world) -> None:
         "GOLDEN_GIFT":   "The Golden Gift",
     }
 
-    scenario_to_key_id: dict[int, int] = getattr(world, "scenario_to_key_id", {}) or {}
+    if mk == 1:
+        scenario_to_item_id: dict[int, int] = (
+            getattr(world, "scenario_to_key_id", {}) or {}
+        )
+    else:
+        scenario_to_item_id = (
+            getattr(world, "scenario_to_ring_item_id", {}) or {}
+        )
 
     for scenario in aomScenarioData:
         if scenario.campaign in disabled_campaigns:
             continue
         n   = scenario.global_number
-        kid = scenario_to_key_id.get(n)
-        if kid is None:
+        iid = scenario_to_item_id.get(n)
+        if iid is None:
             continue
-        key_item = ID_TO_ITEM.get(kid)
-        if key_item is None:
+        item = ID_TO_ITEM.get(iid)
+        if item is None:
             continue
-        key_name = key_item.item_name
-        section  = section_names.get(scenario.campaign.name)
+        gate_name = item.item_name
+        section   = section_names.get(scenario.campaign.name)
         if section is None:
             continue
         ent = multiworld.get_entrance(entrance_name(section, scenario.region_name), player)
-        add_rule(ent, lambda state, name=key_name: state.has(name, player))
+        add_rule(ent, lambda state, name=gate_name: state.has(name, player))

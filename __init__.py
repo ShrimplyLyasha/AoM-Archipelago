@@ -157,6 +157,9 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     EgyptianMajorGods,
     NorseMajorGods,
     AtlanteanMajorGods,
+    ChineseMajorGods,
+    JapaneseMajorGods,
+    AztecMajorGods,
     MoreFrequentDLCGods,
     NewAtlantis,
     GoldenGift,
@@ -169,7 +172,7 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     FottEgyptianCampaign,
     FottNorseCampaign,
     UpdateBuildingsForRandomGod,
-    UnlockSetsOfScenarios,
+    MaxKeysOnKeyrings,
 )
 from .items import Items
 from .locations import Campaigns, Locations
@@ -197,7 +200,7 @@ class aomWebWorld(WebWorld):
             NewAtlantis,
             GoldenGift,
             Relicsanity,
-            UnlockSetsOfScenarios,
+            MaxKeysOnKeyrings,
         ]),
         OptionGroup("Random Major Gods", [
             Random_Major_Gods,
@@ -206,6 +209,9 @@ class aomWebWorld(WebWorld):
             EgyptianMajorGods,
             NorseMajorGods,
             AtlanteanMajorGods,
+            ChineseMajorGods,
+            JapaneseMajorGods,
+            AztecMajorGods,
             MoreFrequentDLCGods,
             UpdateBuildingsForRandomGod,
         ]),
@@ -250,14 +256,20 @@ _GREEK_GODS      = frozenset({1, 2, 3, 13})
 _EGYPTIAN_GODS   = frozenset({4, 5, 6})
 _NORSE_GODS      = frozenset({7, 8, 9, 14})
 _ATLANTEAN_GODS  = frozenset({10, 11, 12})  # Kronos, Oranos, Gaia
+_CHINESE_GODS    = frozenset({15, 16, 17})  # Nuwa, Fuxi, Shennong
+_JAPANESE_GODS   = frozenset({18, 19, 20})  # Amaterasu, Tsukuyomi, Susanoo
+_AZTEC_GODS      = frozenset({21, 22, 23})  # Huitzilopochtli, Tezcatlipoca, Quetzalcoatl
 _ALL_GODS        = _GREEK_GODS | _EGYPTIAN_GODS | _NORSE_GODS
-_ALL_GODS_WITH_ATLANTIS = _ALL_GODS | _ATLANTEAN_GODS
+_ALL_GODS_WITH_ATLANTIS = _ALL_GODS | _ATLANTEAN_GODS | _CHINESE_GODS | _JAPANESE_GODS | _AZTEC_GODS
 _GOD_NAMES     = {
     1: "Zeus",   2: "Poseidon", 3: "Hades",
     4: "Isis",   5: "Ra",       6: "Set",
     7: "Odin",   8: "Thor",     9: "Loki",
     10: "Kronos", 11: "Oranos", 12: "Gaia",
     13: "Demeter", 14: "Freyr",
+    15: "Nuwa", 16: "Fuxi", 17: "Shennong",
+    18: "Amaterasu", 19: "Tsukuyomi", 20: "Susanoo",
+    21: "Huitzilopochtli", 22: "Tezcatlipoca", 23: "Quetzalcoatl",
 }
 
 def _civ_of_god(god: int) -> frozenset:
@@ -268,15 +280,21 @@ def _civ_of_god(god: int) -> frozenset:
     if god in _GREEK_GODS:     return _GREEK_GODS
     if god in _EGYPTIAN_GODS:  return _EGYPTIAN_GODS
     if god in _ATLANTEAN_GODS: return _ATLANTEAN_GODS
+    if god in _CHINESE_GODS:   return _CHINESE_GODS
+    if god in _JAPANESE_GODS:  return _JAPANESE_GODS
+    if god in _AZTEC_GODS:     return _AZTEC_GODS
     return _NORSE_GODS
 
 def _civ_of_god_name(god: int) -> str:
-    """Return the civilization label ("Greek"/"Egyptian"/"Norse"/"Atlantean")
+    """Return the civilization label ("Greek"/"Egyptian"/"Norse"/"Atlantean"/"Chinese"/"Japanese"/"Aztec")
     for a god id.  Used wherever we need the civ as a string key — e.g. into
     `_AGE_BASE_TECHS`, into `_CIV_ARCHAIC_UNITS`, or for slot_data emission."""
     if god in _GREEK_GODS:     return "Greek"
     if god in _EGYPTIAN_GODS:  return "Egyptian"
     if god in _ATLANTEAN_GODS: return "Atlantean"
+    if god in _CHINESE_GODS:   return "Chinese"
+    if god in _JAPANESE_GODS:  return "Japanese"
+    if god in _AZTEC_GODS:     return "Aztec"
     return "Norse"
 
 
@@ -294,16 +312,16 @@ _MINOR_GOD_TECHS: dict[tuple, list] = {
     (2,3): ["cTechMythicAgeHephaestus", "cTechMythicAgeArtemis"],
     (3,1): ["cTechClassicalAgeAthena",  "cTechClassicalAgeAres"],
     (3,2): ["cTechHeroicAgeApollo",     "cTechHeroicAgeAphrodite"],
-    (3,3): ["cTechMythicAgeHera",       "cTechMythicAgeArtemis"],
-    (4,1): ["cTechClassicalAgeAnubis",  "cTechClassicalAgePtah"],
+    (3,3): ["cTechMythicAgeHephaestus", "cTechMythicAgeArtemis"],
+    (4,1): ["cTechClassicalAgeAnubis",  "cTechClassicalAgeBast"],
     (4,2): ["cTechHeroicAgeSobek",      "cTechHeroicAgeNephthys"],
-    (4,3): ["cTechMythicAgeHorus",      "cTechMythicAgeThoth"],
+    (4,3): ["cTechMythicAgeOsiris",     "cTechMythicAgeThoth"],
     (5,1): ["cTechClassicalAgeBast",    "cTechClassicalAgePtah"],
     (5,2): ["cTechHeroicAgeSekhmet",    "cTechHeroicAgeSobek"],
     (5,3): ["cTechMythicAgeOsiris",     "cTechMythicAgeHorus"],
-    (6,1): ["cTechClassicalAgeAnubis",  "cTechClassicalAgeBast"],
+    (6,1): ["cTechClassicalAgePtah",    "cTechClassicalAgeAnubis"],
     (6,2): ["cTechHeroicAgeSekhmet",    "cTechHeroicAgeNephthys"],
-    (6,3): ["cTechMythicAgeOsiris",     "cTechMythicAgeThoth"],
+    (6,3): ["cTechMythicAgeHorus",      "cTechMythicAgeThoth"],
     (7,1): ["cTechClassicalAgeFreyja",  "cTechClassicalAgeHeimdall"],
     (7,2): ["cTechHeroicAgeNjord",      "cTechHeroicAgeSkadi"],
     (7,3): ["cTechMythicAgeBaldr",      "cTechMythicAgeTyr"],
@@ -328,6 +346,48 @@ _MINOR_GOD_TECHS: dict[tuple, list] = {
     (12,1): ["cTechClassicalAgeLeto",       "cTechClassicalAgeOceanus"],
     (12,2): ["cTechHeroicAgeRheia",         "cTechHeroicAgeTheia"],
     (12,3): ["cTechMythicAgeAtlas",         "cTechMythicAgeHekate"],
+    # Chinese — Nuwa (15) / Fuxi (16) / Shennong (17)
+    # Per Memory Files\major_and_minor_gods.docx:
+    #   Fuxi:     Xuannu/Chiyou, Goumang/Nuba,   Gonggong/Huangdi
+    #   Nuwa:     Xuannu/Houtu,  Goumang/Rushou, Gonggong/Zhurong
+    #   Shennong: Houtu/Chiyou,  Rushou/Nuba,    Huangdi/Zhurong
+    (15,1): ["cTechClassicalAgeXuannu",     "cTechClassicalAgeHoutu"],
+    (15,2): ["cTechHeroicAgeGoumang",       "cTechHeroicAgeRushou"],
+    (15,3): ["cTechMythicAgeGonggong",      "cTechMythicAgeZhurong"],
+    (16,1): ["cTechClassicalAgeXuannu",     "cTechClassicalAgeChiyou"],
+    (16,2): ["cTechHeroicAgeGoumang",       "cTechHeroicAgeNuba"],
+    (16,3): ["cTechMythicAgeGonggong",      "cTechMythicAgeHuangdi"],
+    (17,1): ["cTechClassicalAgeHoutu",      "cTechClassicalAgeChiyou"],
+    (17,2): ["cTechHeroicAgeRushou",        "cTechHeroicAgeNuba"],
+    (17,3): ["cTechMythicAgeHuangdi",       "cTechMythicAgeZhurong"],
+    # Japanese — Amaterasu (18) / Tsukuyomi (19) / Susanoo (20)
+    # Per Memory Files\major_and_minor_gods.docx:
+    #   Amaterasu: AmeNoUzume/Minakatatomi, Hachiman/Raijin,  Takemikazuchi/Okuninushi
+    #   Tsukuyomi: AmeNoUzume/InariOkami,   Hachiman/Fujin,   Watatsumi/Okuninushi
+    #   Susanoo:   Minakatatomi/InariOkami, Fujin/Raijin,     Takemikazuchi/Watatsumi
+    (18,1): ["cTechClassicalAgeAmeNoUzume",   "cTechClassicalAgeMinakatatomi"],
+    (18,2): ["cTechHeroicAgeHachiman",        "cTechHeroicAgeRaijin"],
+    (18,3): ["cTechMythicAgeTakemikazuchi",   "cTechMythicAgeOkuninushi"],
+    (19,1): ["cTechClassicalAgeAmeNoUzume",   "cTechClassicalAgeInariOkami"],
+    (19,2): ["cTechHeroicAgeHachiman",        "cTechHeroicAgeFujin"],
+    (19,3): ["cTechMythicAgeWatatsumi",       "cTechMythicAgeOkuninushi"],
+    (20,1): ["cTechClassicalAgeMinakatatomi", "cTechClassicalAgeInariOkami"],
+    (20,2): ["cTechHeroicAgeFujin",           "cTechHeroicAgeRaijin"],
+    (20,3): ["cTechMythicAgeTakemikazuchi",   "cTechMythicAgeWatatsumi"],
+    # Aztec — Huitzilopochtli (21) / Tezcatlipoca (22) / Quetzalcoatl (23)
+    # Per Memory Files\major_and_minor_gods.docx:
+    #   Huitzilopochtli: Patecatl/Malinalxochitl,  Coatlicue/Itzpapalotl,   Tlaloc/Mictlantecutli
+    #   Tezcatlipoca:    Malinalxochitl/Huehuecoyotl, Coyolxauhqui/Itzpapalotl, Xolotl/Mictlantecutli
+    #   Quetzalcoatl:    Patecatl/Huehuecoyotl,    Coatlicue/Coyolxauhqui,  Tlaloc/Xolotl
+    (21,1): ["cTechClassicalAgePatecatl",       "cTechClassicalAgeMalinalxochitl"],
+    (21,2): ["cTechHeroicAgeCoatlicue",         "cTechHeroicAgeItzpapalotl"],
+    (21,3): ["cTechMythicAgeTlaloc",            "cTechMythicAgeMictlantecutli"],
+    (22,1): ["cTechClassicalAgeMalinalxochitl", "cTechClassicalAgeHuehuecoyotl"],
+    (22,2): ["cTechHeroicAgeCoyolxauhqui",      "cTechHeroicAgeItzpapalotl"],
+    (22,3): ["cTechMythicAgeXolotl",            "cTechMythicAgeMictlantecutli"],
+    (23,1): ["cTechClassicalAgePatecatl",       "cTechClassicalAgeHuehuecoyotl"],
+    (23,2): ["cTechHeroicAgeCoatlicue",         "cTechHeroicAgeCoyolxauhqui"],
+    (23,3): ["cTechMythicAgeTlaloc",            "cTechMythicAgeXolotl"],
 }
 
 _AGE_BASE_TECHS: dict[str, dict] = {
@@ -335,6 +395,9 @@ _AGE_BASE_TECHS: dict[str, dict] = {
     "Egyptian":  {1:"cTechClassicalAgeEgyptian",  2:"cTechHeroicAgeEgyptian",  3:"cTechMythicAgeEgyptian"},
     "Norse":     {1:"cTechClassicalAgeNorse",     2:"cTechHeroicAgeNorse",     3:"cTechMythicAgeNorse"},
     "Atlantean": {1:"cTechClassicalAgeAtlantean", 2:"cTechHeroicAgeAtlantean", 3:"cTechMythicAgeAtlantean"},
+    "Chinese":   {1:"cTechClassicalAgeChinese",   2:"cTechHeroicAgeChinese",   3:"cTechMythicAgeChinese"},
+    "Japanese":  {1:"cTechClassicalAgeJapanese",  2:"cTechHeroicAgeJapanese",  3:"cTechMythicAgeJapanese"},
+    "Aztec":     {1:"cTechClassicalAgeAztec",     2:"cTechHeroicAgeAztec",     3:"cTechMythicAgeAztec"},
 }
 
 _SCENARIO_STARTING_AGE: dict[int, int] = {
@@ -474,6 +537,9 @@ _CIV_ARCHAIC_UNITS: dict[str, list] = {
     "Egyptian":  ["Mercenary", "Priest", "Pharaoh", "VillagerEgyptian"],
     "Norse":     ["Berserk", "Hersir", "VillagerDwarf", "VillagerNorse"],
     "Atlantean": ["Oracle", "VillagerAtlantean"],
+    "Chinese":   ["Pioneer", "Sage", "Kuafu", "SkyLantern", "VillagerChinese"],
+    "Japanese":  ["Miko", "Bushi", "OnnaMusha", "Daimyo", "Onmyoji", "VillagerJapanese"],
+    "Aztec":     ["WarriorPriest", "VillagerAztec"],
 }
 
 def _compute_archaic_forbids(vanilla_god_id: int, assigned_god_id: int) -> list:
@@ -594,7 +660,7 @@ class aomWorld(World):
 
         # Compute excluded civilizations from per-pantheon boolean options.
         # Only applies when random_major_gods is enabled.
-        _CIV_GODS = {"Greek": set(_GREEK_GODS), "Egyptian": set(_EGYPTIAN_GODS), "Norse": set(_NORSE_GODS), "Atlantean": set(_ATLANTEAN_GODS)}
+        _CIV_GODS = {"Greek": set(_GREEK_GODS), "Egyptian": set(_EGYPTIAN_GODS), "Norse": set(_NORSE_GODS), "Atlantean": set(_ATLANTEAN_GODS), "Chinese": set(_CHINESE_GODS), "Japanese": set(_JAPANESE_GODS), "Aztec": set(_AZTEC_GODS)}
         if _rmg_on:
             self.excluded_civs: frozenset[str] = frozenset(
                 civ for civ, opt in [
@@ -602,15 +668,20 @@ class aomWorld(World):
                     ("Egyptian", self.options.shuffle_egyptian_major_gods),
                     ("Norse",    self.options.shuffle_norse_major_gods),
                     ("Atlantean",self.options.shuffle_atlantean_major_gods),
+                    ("Chinese",  self.options.shuffle_chinese_major_gods),
+                    ("Japanese", self.options.shuffle_japanese_major_gods),
+                    ("Aztec",    self.options.shuffle_aztec_major_gods),
                 ] if not bool(opt.value)
             )
             # Validation: at least one pantheon must be active
-            if len(self.excluded_civs) == 4:
+            if len(self.excluded_civs) == 7:
                 raise Exception(
                     "AoMR Archipelago: All pantheons are disabled. "
                     "Set at least one pantheon to true in your options YAML "
                     "(shuffle_greek_major_gods, shuffle_egyptian_major_gods, "
-                    "shuffle_norse_major_gods, or shuffle_atlantean_major_gods)."
+                    "shuffle_norse_major_gods, shuffle_atlantean_major_gods, "
+                    "shuffle_chinese_major_gods, shuffle_japanese_major_gods, "
+                    "or shuffle_aztec_major_gods)."
                 )
         else:
             self.excluded_civs = frozenset()
@@ -622,6 +693,34 @@ class aomWorld(World):
             self.god_assignments: dict[int, int] = self._generate_god_assignments()
         else:
             self.god_assignments = {}
+
+        # Effective civ exclusion: union of YAML-opted-out civs and civs that
+        # rolled zero scenario assignments under random_major_gods.  A civ with
+        # no scenarios assigned can still have its progression items (age
+        # unlocks, myth-unit progression, unit unlocks) added to the pool by
+        # the existing create_items logic — those items would be pure dead
+        # weight, eating progression-legal slots and tightening the squeeze.
+        # Treating those civs the same as YAML-excluded civs drops their
+        # items from the pool automatically.
+        if _rmg_on and self.god_assignments:
+            _assigned_civs = {
+                _civ_of_god_name(g) for g in self.god_assignments.values()
+            }
+            _all_civs = {"Greek", "Egyptian", "Norse", "Atlantean",
+                         "Chinese", "Japanese", "Aztec"}
+            _auto_excluded = (_all_civs - _assigned_civs) - set(self.excluded_civs)
+            self.effective_excluded_civs: frozenset[str] = frozenset(
+                self.excluded_civs | (_all_civs - _assigned_civs)
+            )
+            if _auto_excluded:
+                logger.info(
+                    "AoMR: auto-excluded civs with zero scenario assignments "
+                    f"under random_major_gods: {sorted(_auto_excluded)}. "
+                    "Their age unlocks, myth-unit progression, and unit "
+                    "items are dropped from the pool."
+                )
+        else:
+            self.effective_excluded_civs = frozenset(self.excluded_civs)
         self.minor_god_assignments: dict[int, list] = self._generate_minor_god_assignments()
         self.minor_god_full: dict[int, dict]        = self._generate_minor_god_full()
         self.archaic_forbids: dict[int, list]       = self._generate_archaic_forbids()
@@ -631,10 +730,22 @@ class aomWorld(World):
             self.shop_obelisk_assignments, self.shop_progression_slots, self.shop_filler_only = (
                 self._generate_shop_assignments()
             )
+            # Pre-pick the EXCLUDED shop slots here (rather than lazily in Rules.py)
+            # so create_items can size useful capacity correctly.  EXCLUDED slots
+            # accept only filler/trap, so they shrink the useful-pool ceiling
+            # alongside strict filler-only slots.
+            from .locations.Locations import ALL_SHOP_ITEM_IDS as _ALL_SHOP_IDS
+            _all_prog = set()
+            for _ids in self.shop_progression_slots.values():
+                _all_prog.update(_ids)
+            _excludable = [lid for lid in _ALL_SHOP_IDS if lid not in _all_prog]
+            self.random.shuffle(_excludable)
+            self.shop_excluded_ids: set[int] = set(_excludable[: self.random.randint(8, 11)])
         else:
             self.shop_obelisk_assignments = {}
             self.shop_progression_slots   = {}
             self.shop_filler_only         = set()
+            self.shop_excluded_ids: set[int] = set()
 
         # Relicsanity flag — read once so Regions/Rules/create_items can branch on it.
         self.relicsanity_enabled: bool = bool(self.options.relicsanity.value)
@@ -670,6 +781,27 @@ class aomWorld(World):
                     self._fallback_start_campaign = _fallback
                     break
 
+        # Auto-clamp x_scenarios to the number of enabled non-final scenarios.
+        # If beat_x_scenarios mode asks the player to beat more scenarios than
+        # exist in the active campaigns, the Final section can never unlock and
+        # generation will fail downstream. Clamp + warn.
+        if int(self.options.final_scenarios.value) == FinalScenarios.option_beat_x_scenarios:
+            from .locations.Scenarios import aomScenarioData
+            enabled_scenario_count = sum(
+                1 for s in aomScenarioData
+                if s.campaign not in self.disabled_campaigns
+                and s.campaign != aomCampaignData.FOTT_FINAL
+            )
+            requested = int(self.options.x_scenarios.value)
+            if requested > enabled_scenario_count:
+                logger.warning(
+                    f"AoMR: x_scenarios={requested} exceeds the number of "
+                    f"enabled non-final scenarios ({enabled_scenario_count}). "
+                    f"Clamping x_scenarios to {enabled_scenario_count} so the "
+                    "Final section can actually unlock."
+                )
+                self.options.x_scenarios.value = enabled_scenario_count
+
         # Pre-determined random god powers per scenario per tier (uses self.random
         # for deterministic regeneration). Must run after disabled_campaigns is set.
         self.god_power_assignments: dict[int, list[str]] = self._generate_god_power_assignments()
@@ -677,7 +809,7 @@ class aomWorld(World):
         # Scenario-key bundling — must run after disabled_campaigns is set (so we
         # only bundle scenarios in active campaigns) and after god_assignments
         # (not strictly needed but keeps RNG ordering predictable).
-        self._generate_scenario_bundles()
+        self._generate_keyring_assignments()
 
 
 
@@ -697,40 +829,41 @@ class aomWorld(World):
 
         # Gem-shop softlock guard.  Only relevant when gem_shop is on (this
         # function is only called in that case).  When shops are
-        # immediately accessible and scenario keys form tiny bundles,
-        # advancement items in shops can be paid for in the wrong order
-        # and soft-lock the seed.  We have two layers:
+        # immediately accessible and key rings carry few keys (i.e. there
+        # are many small ring items in the pool), advancement items in
+        # shops can be paid for in the wrong order and soft-lock the
+        # seed.  Two layers:
         #   * Hard clamp — auto-zero advancement-in-shops on the worst
         #     combination, so the seed stays solvable no matter how the
         #     player spends gems.  Scenario keys must be enabled
-        #     (unlock_sets_of_scenarios > 0) for this branch to apply;
+        #     (max_keys_on_keyrings > 0) for this branch to apply;
         #     a value of 0 disables scenario keys entirely and removes
         #     that specific softlock vector.
         #   * Advisory warning — emit on a looser set of risky combos so
         #     players get a heads-up without forcing a behaviour change.
         wins_to_open = int(self.options.wins_to_open_shop.value)
-        sk_bundles   = int(self.options.unlock_sets_of_scenarios.value)
+        ring_cap     = int(self.options.max_keys_on_keyrings.value)
         if max_adv > 0:
-            if wins_to_open <= 1 and 0 < sk_bundles <= 2:
+            if wins_to_open <= 1 and 0 < ring_cap <= 2:
                 logger.warning(
                     "AoMR: gem-shop softlock risk detected "
                     f"(wins_to_open_shop={wins_to_open}, "
-                    f"unlock_sets_of_scenarios={sk_bundles}, "
+                    f"max_keys_on_keyrings={ring_cap}, "
                     f"max_advancement_items_in_each_shop={max_adv}). "
-                    "With shops opening immediately and tiny scenario-key "
-                    "bundles, gems spent on the wrong shop slots can "
+                    "With shops opening immediately and very small key "
+                    "rings, gems spent on the wrong shop slots can "
                     "soft-lock the seed. Auto-clamping "
                     "max_advancement_items_in_each_shop to 0."
                 )
                 max_adv = 0
-            elif wins_to_open <= 2 or 0 < sk_bundles <= 3:
+            elif wins_to_open <= 2 or 0 < ring_cap <= 3:
                 logger.warning(
                     "AoMR: gem-shop softlock risk "
                     f"(wins_to_open_shop={wins_to_open}, "
-                    f"unlock_sets_of_scenarios={sk_bundles}, "
+                    f"max_keys_on_keyrings={ring_cap}, "
                     f"max_advancement_items_in_each_shop={max_adv}). "
-                    "Shops open quickly and/or scenario-key bundles are "
-                    "small. Spending gems on the wrong advancement slots "
+                    "Shops open quickly and/or key rings carry few keys. "
+                    "Spending gems on the wrong advancement slots "
                     "may soft-lock progress. Generation continues."
                 )
 
@@ -742,9 +875,12 @@ class aomWorld(World):
             n_prog = 0 if tier_name == "A" else max_adv
             progression_slots[tier_name] = set(locs[:n_prog])
 
-            # Of the remaining slots, randomly pick ~80% to be filler-only.
+            # Of the remaining slots, randomly pick ~50% to be filler-only
+            # (only `filler` classification allowed).  The other ~50% accept
+            # `useful` items as well as filler/traps, giving the pool more
+            # breathing room when the useful list is large.
             non_prog = locs[n_prog:]
-            n_filler_only = round(len(non_prog) * 0.8)
+            n_filler_only = round(len(non_prog) * 0.5)
             if n_filler_only > 0:
                 filler_only_locs.update(self.random.sample(non_prog, n_filler_only))
 
@@ -931,15 +1067,20 @@ class aomWorld(World):
         from .locations.Scenarios import aomScenarioData
 
         TIER_POOLS = [
-            ["Bolt", "Deconstruction", "LocustSwarm", "GreatHunt", "Shockwave", "GaiaForest"],
+            ["Bolt", "Deconstruction", "LocustSwarm", "GreatHunt", "Shockwave", "GaiaForest",
+             "Creation", "SolarShield", "BloodPact", "Tailwind"],
             ["Restoration", "Carnivora", "SpiderLair", "Pestilence", "Eclipse",
             "ShiftingSands", "PlagueOfSerpents", "Undermine", "HealingSpring",
-            "AsgardianBastion"],
+            "AsgardianBastion", "Vanish", "LightningWeapons", "EarthWall",
+            "Swampland", "Goshinboku", "Infestation", "AgaveBloom", "Lullaby"],
             ["Traitor", "FlamingWeapons", "UnderworldPassage", "Bronze", "Curse",
             "Ancestors", "WalkingWoods", "Frost", "Chaos", "HesperidesTree",
-            "Tempest"],
+            "Tempest", "ForestProtection", "DroughtLand", "VenomBeast",
+            "ThunderBurst", "SmitingGust", "Purge", "EarthMonster", "Starfall"],
             ["LightningStorm", "Earthquake", "Meteor", "Tornado", "Nidhogg",
-            "Implode", "TartarianGate", "Inferno"],
+            "Implode", "TartarianGate", "Inferno", "GreatFlood", "YinglongsWrath",
+            "BlazingPrairie", "DivineSlash", "DragonTyphoon", "Volcano",
+            "MonolithOfTlaloc"],
         ]
 
         result: dict[int, list[str]] = {}
@@ -955,81 +1096,50 @@ class aomWorld(World):
 
         return result
 
-    def _generate_scenario_bundles(self) -> None:
-        """Compute scenario-key bundles when `unlock_sets_of_scenarios > 0`.
+    def _generate_keyring_assignments(self) -> None:
+        """Compute scenario-key Key Ring assignments per the
+        `max_keys_on_keyrings` option.
 
-        Result attributes (always set, even when option is 0):
-          * `unlock_sets_of_scenarios` (int)
-          * `scenario_bundles` (list[list[int]]) — bundle index → scenario IDs
-          * `scenario_to_key_id` (dict[int, int]) — scenario global → AP item id
-          * `bundle_display_names` (dict[int, str]) — AP item id → friendly name
-          * `starter_bundle_key_id` (int|None) — precollected key, or None when off
+        Semantics:
+          * max = 0  -> feature disabled. No keys at all; scenarios are not
+            gated by Scenario Keys.
+          * max = 1  -> individual Scenario Key items (one per scenario)
+            shuffled directly into the multiworld. No Key Ring items.
+          * max >= 2 -> scenarios bundled onto Key Ring items.  Each ring
+            carries 1..max scenario keys, size rolled with a discrete
+            binomial(n=max-1, p=0.5) + 1 distribution (mode near (max+1)/2).
+            The starter ring (precollected) carries exactly ceil(max/2)
+            scenarios and is guaranteed to include at least one sphere-1
+            scenario so the player has something to play immediately.
+            Receiving any ring delivers every scenario key it carries.
 
-        Bundle algorithm:
-          starter bundle = ceil(N/2) scenarios, includes >=1 sphere-1 scenario
-            from the player's starting (or fallback) campaign.
-          remaining bundles: random size = round((rand(1,N) + rand(1,N) + rand(1,N))/3),
-            capped at remaining count. Bundle contents are arbitrary across all
-            active campaigns (cross-campaign allowed).
-
-        Asserts that we don't exceed the 50 pre-registered SCENARIO_KEY slots.
+        Result attributes (always set, even when feature disabled):
+          * `max_keys_on_keyrings` (int)
+          * `scenario_bundles` (list[list[int]]) — ring index → scenario IDs
+                (index 0 = starter ring; matches order of rings)
+          * `scenario_to_key_id` (dict[int, int]) — scenario global → AP key id
+          * `scenario_to_ring_item_id` (dict[int, int]) — scenario global → AP
+                ring item id that carries it (empty when max <= 1)
+          * `ring_item_id_to_scenarios` (dict[int, list[int]]) — AP ring item id
+                → list of scenario global numbers (empty when max <= 1)
+          * `ring_display_names` (dict[int, str]) — AP ring item id → friendly
+                name ("Scenario Key Ring 3") (empty when max <= 1)
+          * `starter_ring_item_id` (int | None) — the precollected ring item id
+                when max >= 2 (None otherwise)
+          * `starter_scenario_key_ids` (list[int]) — precollected individual
+                Scenario Key item ids when max == 1 (mirrors old behavior)
         """
         from .locations.Scenarios import aomScenarioData
 
-        N = int(self.options.unlock_sets_of_scenarios.value)
-        self.unlock_sets_of_scenarios = N
+        N = int(self.options.max_keys_on_keyrings.value)
+        self.max_keys_on_keyrings = N
         self.scenario_bundles: list[list[int]] = []
         self.scenario_to_key_id: dict[int, int] = {}
-        self.bundle_display_names: dict[int, str] = {}
-        self.starter_bundle_key_id: int | None = None
-
-        # Per-slot bank assignment: each AoM slot gets its own 50-id bank
-        # within the SCENARIO_KEY range.  AoM slots in this multiworld are
-        # ordered by player number; bank index = position in that ordering.
-        # Cap = SCENARIO_KEY_MAX_SLOTS (8).  Two AoM slots therefore never
-        # collide on the shared item-name registries.
-        aom_player_ids = sorted(
-            p for p in self.multiworld.player_ids
-            if getattr(self.multiworld.worlds.get(p), "game", "") == AOMR
-        )
-        try:
-            slot_index = aom_player_ids.index(self.player)
-        except ValueError:
-            slot_index = 0
-        if slot_index >= Items.SCENARIO_KEY_MAX_SLOTS:
-            raise ValueError(
-                f"AoM Archipelago: Scenario Keys support a maximum of "
-                f"{Items.SCENARIO_KEY_MAX_SLOTS} simultaneous AoM slots; "
-                f"this multiworld has more."
-            )
-        self._scenario_key_bank_base = (
-            Items.SCENARIO_KEY_BASE_ID + slot_index * Items.SCENARIO_KEY_BANK_SIZE
-        )
-        bank_base = self._scenario_key_bank_base
-        bank_size = Items.SCENARIO_KEY_BANK_SIZE
-
-        # Reset this slot's bank to generic names — protects against repeated
-        # generations in the same Python process leaving stale bundle names.
-        for slot_idx in range(bank_size):
-            kid           = bank_base + slot_idx
-            key_obj       = Items.ID_TO_ITEM[kid]
-            generic_name  = f"Scenario Key {(kid - Items.SCENARIO_KEY_BASE_ID) + 1:03d}"
-            cur_name      = key_obj.item_name
-            if cur_name != generic_name:
-                Items.item_name_to_id.pop(cur_name, None)
-                Items.NAME_TO_ITEM.pop(cur_name, None)
-                try:
-                    aomWorld.item_names.discard(cur_name)
-                except AttributeError:
-                    pass
-            Items.item_name_to_id[generic_name] = kid
-            Items.item_id_to_name[kid]          = generic_name
-            Items.NAME_TO_ITEM[generic_name]    = key_obj
-            try:
-                aomWorld.item_names.add(generic_name)
-            except AttributeError:
-                pass
-            key_obj.item_name = generic_name
+        self.scenario_to_ring_item_id: dict[int, int] = {}
+        self.ring_item_id_to_scenarios: dict[int, list[int]] = {}
+        self.ring_display_names: dict[int, str] = {}
+        self.starter_ring_item_id: int | None = None
+        self.starter_scenario_key_ids: list[int] = []
 
         if N <= 0:
             return
@@ -1042,89 +1152,93 @@ class aomWorld(World):
         if not active_scenarios:
             return
 
-        # Friendly display name per scenario, used for bundle names.
-        display_by_id: dict[int, str] = {
-            s.global_number: s.display_name for s in aomScenarioData
-        }
+        # Per-scenario key id map is always populated so other code paths
+        # (slot_data, debugging) can still resolve scenario -> key item id
+        # even when keys are bundled onto rings.
+        for sid in active_scenarios:
+            kid = Items.SCENARIO_TO_KEY_ID.get(sid)
+            if kid is not None:
+                self.scenario_to_key_id[sid] = kid
 
-        # Starter bundle: ceil(N/2) scenarios, including at least one sphere-1
-        # from the player's (resolved) starting campaign.
+        # Starter sphere-1 seed: at least one scenario the player can attempt
+        # immediately (matches starting campaign when possible).
         start_campaign = self._starting_campaign()
         sphere_ones = [
             sid for sid in _SPHERE_ONE_BY_CAMPAIGN.get(start_campaign.name, [])
             if sid in active_scenarios
         ]
         if not sphere_ones:
-            # Last-ditch fallback: pick any sphere-1 across all active campaigns.
             for camp_name, ids in _SPHERE_ONE_BY_CAMPAIGN.items():
                 sphere_ones = [sid for sid in ids if sid in active_scenarios]
                 if sphere_ones:
                     break
 
-        starter_size = (N + 1) // 2  # ceil(N/2)
-        starter_size = min(starter_size, len(active_scenarios))
-
         remaining_pool = list(active_scenarios)
         self.random.shuffle(remaining_pool)
+
+        # ---- max == 1: per-scenario keys, no rings ----
+        if N == 1:
+            # Starter "bundle" is still ceil(1/2) = 1 scenario for symmetry.
+            starter: list[int] = []
+            if sphere_ones:
+                seed_sid = self.random.choice(sphere_ones)
+                starter.append(seed_sid)
+                remaining_pool.remove(seed_sid)
+            self.scenario_bundles = [starter] + [[sid] for sid in remaining_pool]
+            self.starter_scenario_key_ids = [
+                self.scenario_to_key_id[sid]
+                for sid in starter if sid in self.scenario_to_key_id
+            ]
+            return
+
+        # ---- max >= 2: bundle onto Key Ring items ----
+        # Starter ring size = ceil(N/2), always (no binomial roll for starter).
+        starter_size = (N + 1) // 2
+        starter_size = min(starter_size, len(active_scenarios))
 
         starter: list[int] = []
         if sphere_ones:
             seed_sid = self.random.choice(sphere_ones)
             starter.append(seed_sid)
             remaining_pool.remove(seed_sid)
-        # Pad starter bundle with random remaining scenarios up to starter_size.
         while len(starter) < starter_size and remaining_pool:
             starter.append(remaining_pool.pop())
 
         bundles: list[list[int]] = [starter]
 
-        # Random bundling for the rest using bell-curve roll.
+        # Non-starter rings: size ~ 1 + Binomial(n=max-1, p=0.5).
+        # Range [1, max], mode near (max+1)/2; max-sized rings rare.
+        # self.random has no binomialvariate, so sample via sum of fair coins.
         while remaining_pool:
-            roll_size = round(
-                (self.random.randint(1, N) + self.random.randint(1, N) + self.random.randint(1, N)) / 3
+            roll_size = 1 + sum(
+                1 for _ in range(N - 1) if self.random.random() < 0.5
             )
             roll_size = max(1, min(roll_size, len(remaining_pool)))
             bundles.append(remaining_pool[:roll_size])
             remaining_pool = remaining_pool[roll_size:]
 
-        # Assert capacity vs this slot's bank size.
-        if len(bundles) > bank_size:
-            raise ValueError(
-                f"Scenario-key bundles ({len(bundles)}) exceed this slot's "
-                f"bank size ({bank_size}). Increase SCENARIO_KEY_BANK_SIZE in "
-                f"items/Items.py (and re-partition SCENARIO_KEY_MAX_SLOTS)."
-            )
+        self.scenario_bundles = [list(b) for b in bundles]
 
-        # Assign each bundle to one id in this slot's bank, AND rename the
-        # registered item to embed bundle contents so spoiler logs, AP server
-        # chat, and hints all show the friendly bundle text.  Per-slot banking
-        # means two simultaneous AoM slots never write to the same id.
-        for bundle_idx, scenario_ids in enumerate(bundles):
-            key_item_id = bank_base + bundle_idx
-            key_obj     = Items.ID_TO_ITEM[key_item_id]
-            old_name    = key_obj.item_name
-            display     = ", ".join(display_by_id[sid] for sid in scenario_ids)
-            new_name    = f"Key to {display}"
+        # Allocate stable ring item ids from the static registry, one per
+        # ring index (index 0 = starter -> ring 1, index 1 -> ring 2, ...).
+        for ring_idx, scenarios in enumerate(self.scenario_bundles):
+            ring_index_1based = ring_idx + 1
+            ring_item_id = Items.RING_INDEX_TO_ITEM_ID.get(ring_index_1based)
+            if ring_item_id is None:
+                # Safety: more rings than pre-allocated.  Should not happen
+                # because MAX_KEY_RINGS == total scenarios across all campaigns.
+                raise RuntimeError(
+                    f"AoMR: more key rings ({len(self.scenario_bundles)}) than "
+                    f"pre-allocated ring item IDs ({len(Items.RING_INDEX_TO_ITEM_ID)})."
+                )
+            self.ring_item_id_to_scenarios[ring_item_id] = list(scenarios)
+            self.ring_display_names[ring_item_id] = Items.item_id_to_name[ring_item_id]
+            for sid in scenarios:
+                self.scenario_to_ring_item_id[sid] = ring_item_id
 
-            self.scenario_bundles.append(list(scenario_ids))
-            for sid in scenario_ids:
-                self.scenario_to_key_id[sid] = key_item_id
-            self.bundle_display_names[key_item_id] = new_name
-
-            if old_name != new_name:
-                Items.item_name_to_id.pop(old_name, None)
-                Items.NAME_TO_ITEM.pop(old_name, None)
-                Items.item_name_to_id[new_name]    = key_item_id
-                Items.item_id_to_name[key_item_id] = new_name
-                Items.NAME_TO_ITEM[new_name]       = key_obj
-                key_obj.item_name = new_name
-                try:
-                    aomWorld.item_names.discard(old_name)
-                    aomWorld.item_names.add(new_name)
-                except AttributeError:
-                    pass
-
-        self.starter_bundle_key_id = bank_base  # first bundle in this slot's bank
+        # Index 0 is the starter ring.
+        if self.scenario_bundles:
+            self.starter_ring_item_id = Items.RING_INDEX_TO_ITEM_ID[1]
 
     def create_items(self) -> None:
         """
@@ -1148,15 +1262,24 @@ class aomWorld(World):
         hero_abilities_on = bool(self.options.hero_abilities.value)
         hero_ability_types = (Items.HeroSpecialEffect, Items.HeroActionBoost, Items.ArkantosHousing)
         myth_unit_types    = (Items.MythUnitUnlockProgression, Items.MythUnitUnlockUseful,
-                               Items.MythUnitUnlockFiller, Items.AtlanteanMythUnitUnlock)
+                               Items.MythUnitUnlockFiller, Items.AtlanteanMythUnitUnlock,
+                               Items.ChineseMythUnitUnlock, Items.JapaneseMythUnitUnlock,
+                               Items.AztecMythUnitUnlock)
         atlantean_types    = (Items.AtlanteanUnitUnlockProgression, Items.AtlanteanUnitUnlockUseful,
                                Items.AtlanteanMythUnitUnlock)
+        chinese_types      = (Items.ChineseUnitUnlockProgression, Items.ChineseUnitUnlockUseful,
+                               Items.ChineseMythUnitUnlock)
+        japanese_types     = (Items.JapaneseUnitUnlockProgression, Items.JapaneseUnitUnlockUseful,
+                               Items.JapaneseMythUnitUnlock)
+        aztec_types        = (Items.AztecUnitUnlockProgression, Items.AztecUnitUnlockUseful,
+                               Items.AztecMythUnitUnlock)
         random_major_gods_on        = bool(self.options.random_major_gods.value)
 
         # Age unlocks are never precollected — players use start_inventory or
         # start_inventory_from_pool in their YAML if they want starting unlocks.
         starting_age_unlocks = {
-            "Greek": 0, "Egyptian": 0, "Norse": 0, "Atlantean": 0,
+            "Greek": 0, "Egyptian": 0, "Norse": 0, "Atlantean": 0, "Chinese": 0,
+            "Japanese": 0, "Aztec": 0,
         }
         age_unlock_counts: dict[str, int] = {"Greek": 0, "Egyptian": 0, "Norse": 0}
 
@@ -1174,9 +1297,11 @@ class aomWorld(World):
             if item_type == Items.Trap or (isinstance(item_type, type) and issubclass(item_type, Items.Trap)):
                 continue  # traps placed via trap_count option below
 
-            # Scenario Keys are not aomItemData enum members (registered as
-            # duck-typed objects in items/Items.py); pushed explicitly below
-            # after this loop using `self.bundle_display_names`.
+            # Scenario Keys and Key Ring items are not aomItemData enum
+            # members (registered as duck-typed objects in items/Items.py).
+            # They are pushed explicitly below depending on
+            # `self.max_keys_on_keyrings`: 0 -> none, 1 -> per-scenario keys,
+            # >=2 -> Key Ring items only.
 
             # Section unlock items
             if item_type == Items.Campaign:
@@ -1290,9 +1415,23 @@ class aomWorld(World):
             if isinstance(item.type, atlantean_types) and not random_major_gods_on:
                 continue
 
-            # Civ-specific items — skip if that civ is excluded (only when random_major_gods is on)
+            # Chinese items — skip if random_major_gods is off (Chinese not in the pool)
+            if isinstance(item.type, chinese_types) and not random_major_gods_on:
+                continue
+
+            # Japanese items — skip if random_major_gods is off (Japanese not in the pool)
+            if isinstance(item.type, japanese_types) and not random_major_gods_on:
+                continue
+
+            # Aztec items — skip if random_major_gods is off (Aztec not in the pool)
+            if isinstance(item.type, aztec_types) and not random_major_gods_on:
+                continue
+
+            # Civ-specific items — skip if that civ is excluded (YAML opt-out)
+            # OR if random_major_gods rolled zero scenarios for that civ
+            # (dead-weight progression items eat scenario slots for nothing).
             # Generic items (reinforcements, heroes, resources) are never skipped.
-            if random_major_gods_on and self.excluded_civs:
+            if random_major_gods_on and self.effective_excluded_civs:
                 # Primary: items with a culture field (unit unlocks, myth unlocks, age unlocks)
                 _item_civ = getattr(item.type, "culture", None)
                 # Secondary: VillagerCarryCapacity encodes civ in unit_name ("VillagerGreek" etc.)
@@ -1302,7 +1441,10 @@ class aomWorld(World):
                     elif "Egyptian" in _unit_name: _item_civ = "Egyptian"
                     elif "Norse"    in _unit_name: _item_civ = "Norse"
                     elif "Atlantean"in _unit_name: _item_civ = "Atlantean"
-                if _item_civ and _item_civ in self.excluded_civs:
+                    elif "Chinese"  in _unit_name: _item_civ = "Chinese"
+                    elif "Japanese" in _unit_name: _item_civ = "Japanese"
+                    elif "Aztec"    in _unit_name: _item_civ = "Aztec"
+                if _item_civ and _item_civ in self.effective_excluded_civs:
                     continue
 
             # Starting tech items are added explicitly below (1 copy each)
@@ -1322,47 +1464,60 @@ class aomWorld(World):
                     f"Unhandled classification for {item.item_name}: {classification}"
                 )
 
-        # Scenario Keys — push one item per assigned bundle, precollect starter.
-        # Skipped entirely when unlock_sets_of_scenarios is 0 (no bundles).
-        if self.unlock_sets_of_scenarios > 0:
-            for kid, bundle_name in self.bundle_display_names.items():
-                ap_item = self.create_item(bundle_name)
-                if kid == self.starter_bundle_key_id:
-                    self.multiworld.push_precollected(ap_item)
-                else:
-                    progression_pool.append(ap_item)
-
         # Age unlock items — 3 base copies per civ, precollecting starting unlocks
         # Extra copies go to whichever civ is assigned to scenario 32
         extra_final = int(self.options.extra_final_mission_age_unlocks.value)
         scen32_god = self.god_assignments.get(32, 1) if self.god_assignments else 1
-        if scen32_god in (1, 2, 3):       # Greek
-            greek_extra, egyptian_extra, norse_extra, atlantean_extra = extra_final, 0, 0, 0
-        elif scen32_god in (4, 5, 6):     # Egyptian
-            greek_extra, egyptian_extra, norse_extra, atlantean_extra = 0, extra_final, 0, 0
-        elif scen32_god in (10, 11, 12):  # Atlantean
-            greek_extra, egyptian_extra, norse_extra, atlantean_extra = 0, 0, 0, extra_final
-        else:                              # Norse
-            greek_extra, egyptian_extra, norse_extra, atlantean_extra = 0, 0, extra_final, 0
+        greek_extra = egyptian_extra = norse_extra = atlantean_extra = chinese_extra = japanese_extra = aztec_extra = 0
+        if scen32_god in (1, 2, 3, 13):       # Greek
+            greek_extra = extra_final
+        elif scen32_god in (4, 5, 6):         # Egyptian
+            egyptian_extra = extra_final
+        elif scen32_god in (10, 11, 12):      # Atlantean
+            atlantean_extra = extra_final
+        elif scen32_god in (15, 16, 17):      # Chinese
+            chinese_extra = extra_final
+        elif scen32_god in (18, 19, 20):      # Japanese
+            japanese_extra = extra_final
+        elif scen32_god in (21, 22, 23):      # Aztec
+            aztec_extra = extra_final
+        else:                                  # Norse (7, 8, 9, 14)
+            norse_extra = extra_final
         age_unlock_config = [
             (Items.aomItemData.GREEK_AGE_UNLOCK,    "Greek",    3 + greek_extra),
             (Items.aomItemData.EGYPTIAN_AGE_UNLOCK, "Egyptian", 3 + egyptian_extra),
             (Items.aomItemData.NORSE_AGE_UNLOCK,    "Norse",    3 + norse_extra),
         ]
-        # Atlantean age unlocks only added when random_major_gods is on
+        # Atlantean/Chinese/Japanese/Aztec age unlocks only added when random_major_gods is on
         if random_major_gods_on:
             age_unlock_config.append(
                 (Items.aomItemData.ATLANTEAN_AGE_UNLOCK, "Atlantean", 3 + atlantean_extra)
             )
+            age_unlock_config.append(
+                (Items.aomItemData.CHINESE_AGE_UNLOCK, "Chinese", 3 + chinese_extra)
+            )
+            age_unlock_config.append(
+                (Items.aomItemData.JAPANESE_AGE_UNLOCK, "Japanese", 3 + japanese_extra)
+            )
+            age_unlock_config.append(
+                (Items.aomItemData.AZTEC_AGE_UNLOCK, "Aztec", 3 + aztec_extra)
+            )
         _new_atlantis_disabled = Campaigns.aomCampaignData.NEW_ATLANTIS in self.disabled_campaigns
         for item_data, culture, count in age_unlock_config:
-            # Skip age unlocks for civs excluded from the random major god pool,
-            # EXCEPT Atlantean: NA scenarios always use Atlantean mechanics even
-            # when shuffle_atlantean_major_gods is off, so Atlantean age unlocks
-            # are always needed for age-gating NA scenarios (e.g. NA 2 requires
-            # Classical Age). Skip only if New Atlantis campaign is fully disabled.
-            if culture in self.excluded_civs:
-                if culture != "Atlantean" or _new_atlantis_disabled:
+            # Skip age unlocks for civs excluded from the random major god pool.
+            #
+            # Atlantean carve-out: only needed when random_major_gods is OFF.
+            # With random_major_gods OFF, NA scenarios stay vanilla Atlantean and
+            # need Atlantean Age Unlocks to gate Classical/Heroic/Mythic — but in
+            # that mode `excluded_civs` is empty anyway, so this branch is a
+            # belt-and-suspenders no-op.  With random_major_gods ON, NA scenarios
+            # get assigned a god from the active civ pool (never Atlantean if
+            # Atlantean is excluded), and their rules use that god's age-unlock
+            # names — so Atlantean unlocks are dead weight and must be skipped.
+            if culture in self.effective_excluded_civs:
+                if not random_major_gods_on and culture == "Atlantean" and not _new_atlantis_disabled:
+                    pass  # keep Atlantean for NA when random gods are off
+                else:
                     continue
             precollect_n = starting_age_unlocks[culture]
             for i in range(count):
@@ -1423,6 +1578,67 @@ class aomWorld(World):
             raise ValueError(
                 f"Progression pool ({len(progression_pool)} items) exceeds "
                 f"visible location count ({visible_location_count})."
+            )
+
+        # Progression-legal location count: scenario locations that can host
+        # advancement items, plus only the shop slots that allow progression
+        # (per max_advancement_items_in_each_shop; Marsh tier never allows
+        # progression). visible_location_count above includes ALL 60 shop
+        # slots, which masks the real squeeze when shops forbid progression —
+        # so we re-check here with the tighter count and fail early with a
+        # clear message instead of dying inside Fill.
+        progression_legal_count = (
+            sum(1 for loc in Locations.aomLocationData
+                if loc.type != Locations.aomLocationType.COMPLETION
+                and loc.scenario.campaign not in disabled_campaigns
+                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC))
+            - 1  # scenario 32 Victory locked to Victory item
+        )
+        if gem_shop_on:
+            progression_legal_count -= locked_gem_count
+            progression_legal_count += sum(
+                len(slots) for slots in self.shop_progression_slots.values()
+            )
+
+        # Scenario unlock items.
+        #   max_keys_on_keyrings == 0 -> nothing pushed (feature disabled).
+        #   max_keys_on_keyrings == 1 -> one Scenario Key per active scenario
+        #       pushed individually (classic per-scenario-key behavior); the
+        #       sphere-1 starter key (if any) is precollected.
+        #   max_keys_on_keyrings >= 2 -> one Scenario Key Ring per bundle
+        #       pushed instead; the starter ring is precollected. Receiving a
+        #       ring unlocks every scenario it carries (handled client-side).
+        if self.max_keys_on_keyrings == 1:
+            starter_ids = set(self.starter_scenario_key_ids)
+            for sid, kid in self.scenario_to_key_id.items():
+                key_name = Items.item_id_to_name[kid]
+                ap_item = self.create_item(key_name)
+                if kid in starter_ids:
+                    self.multiworld.push_precollected(ap_item)
+                else:
+                    progression_pool.append(ap_item)
+        elif self.max_keys_on_keyrings >= 2:
+            for ring_item_id, ring_name in self.ring_display_names.items():
+                ap_item = self.create_item(ring_name)
+                if ring_item_id == self.starter_ring_item_id:
+                    self.multiworld.push_precollected(ap_item)
+                else:
+                    progression_pool.append(ap_item)
+
+        if len(progression_pool) > progression_legal_count:
+            raise ValueError(
+                f"AoMR: progression pool ({len(progression_pool)} items) "
+                f"exceeds the number of locations that can legally hold "
+                f"advancement items ({progression_legal_count}). "
+                f"Causes: too few enabled campaigns, per-scenario keys "
+                f"(max_keys_on_keyrings=1) inflating the pool, "
+                f"max_advancement_items_in_each_shop=0 blocking shop slots, "
+                f"or random_major_gods adding civ items without enough "
+                f"scenario locations to host them. "
+                f"Fixes: enable more campaigns, raise max_keys_on_keyrings "
+                f"so keys bundle onto rings, "
+                f"raise max_advancement_items_in_each_shop, enable relicsanity, "
+                f"or disable random_major_gods."
             )
 
         # Trap cycle — deck-of-cards pool: every enabled trap type is shuffled,
@@ -1486,12 +1702,16 @@ class aomWorld(World):
         # exclusions in the main item loop) rather than iterating Items.aomItemData
         # directly — otherwise Chiron/Arkantos/Kastor/etc. filler items would leak
         # into the infinite padding pool even when their campaigns are disabled.
+        # NOTE: `_repeatable_useful_names` is intentionally NOT included here.
+        # Those items are `useful` classification, so they cannot land in
+        # filler-only shop slots; mixing them into the padding cycle caused
+        # Fill failures when filler-only slots were the last ones standing.
         all_nonreinf_filler_inf = [
             name
             for type_, names in filler_groups.items()
             for name in names
             if not issubclass(type_, Items.Reinforcement)
-        ] + _repeatable_useful_names
+        ]
 
         # Cap "Joins the Campaign" items at exactly 1 copy in the pool.
         # They appear once via all_useful (each is a unique enum member), but
@@ -1515,12 +1735,62 @@ class aomWorld(World):
         self.random.shuffle(all_filler)
         self.random.shuffle(all_nonreinf_filler_inf)
 
+        # Useful-pool capacity guard.  `useful` items cannot land in
+        # filler-only shop slots (~half of the non-Marsh shop slots).  Marsh
+        # slots and the rest accept useful, so exclude Marsh-tier members
+        # from the filler-only count when sizing capacity.  If the useful
+        # list is longer than that capacity, Fill's remaining_fill phase
+        # errors with "No more spots to place N items".  Trim the surplus
+        # from the unique-useful list and let the infinite filler padding
+        # loop downstream cover those slots with filler/traps instead.
+        # This is the "swap to filler when squeezed" behavior.
+        from .locations.Locations import TIER_ITEM_IDS as _TIER_IDS
+        _marsh_ids = set(_TIER_IDS.get("A", []))
+        _filler_only_locs = getattr(self, "shop_filler_only", set())
+        _excluded_locs    = getattr(self, "shop_excluded_ids", set())
+        # Marsh slots accept useful (per Rules.py dispatch order: is_marsh
+        # check fires before filler_only check), so exclude them from the
+        # filler-only reduction.  EXCLUDED slots take precedence over Marsh
+        # and reject useful regardless, so they always shrink capacity.
+        _strict_filler_only_count = sum(
+            1 for lid in _filler_only_locs
+            if lid not in _marsh_ids and lid not in _excluded_locs
+        )
+        _excluded_count = len(_excluded_locs)
+        # Safety buffer: AP's fill is not optimal — useful items can fail to
+        # place even when the raw count fits, because filler items might grab
+        # useful-capable slots before the last few useful items are placed.
+        # Reserve ~10% of capacity as slack so the filler pool always has more
+        # room than the strict filler-only demand.
+        _safety = max(10, (visible_location_count - len(progression_pool)) // 6)
+        useful_capacity = max(
+            0,
+            visible_location_count
+            - _strict_filler_only_count
+            - _excluded_count
+            - len(progression_pool)
+            - _safety,
+        )
+        if len(all_useful) > useful_capacity:
+            _trimmed = len(all_useful) - useful_capacity
+            logger.warning(
+                f"AoMR: useful pool ({len(all_useful)}) exceeds useful-capable "
+                f"slot count ({useful_capacity} = {visible_location_count} slots "
+                f"- {_strict_filler_only_count} strict-filler-only - "
+                f"{_excluded_count} excluded - {len(progression_pool)} "
+                f"progression). Dropping {_trimmed} useful items; filler "
+                "padding will cover those slots."
+            )
+            all_useful = all_useful[:useful_capacity]
+
         # Fill remaining slots in two phases:
         #   Unique phase  (while either pool has items): 1:1 useful:filler alternation.
         #     Useful exhausted mid-phase → draw filler that turn instead.
         #     Filler exhausted mid-phase → cycle infinite non-reinforcement filler.
-        #   Padding phase (both pools exhausted):        5:1 filler:useful from infinite pools.
-        #     Filler draws cycle all_nonreinf_filler_inf; useful draws cycle _repeatable_useful_names.
+        #   Padding phase (both pools exhausted): pure filler from the infinite
+        #     filler pool.  No useful items in padding — useful classification
+        #     cannot land in filler-only shop slots, which are typically the
+        #     last slots remaining when fill reaches the padding phase.
         # Trap replacement: filler/overflow turns roll against trap_pct; useful turns roll
         # against useful_trap_pct (10% of trap_pct).
         itempool: list[Item] = []
@@ -1530,26 +1800,17 @@ class aomWorld(World):
         u_idx = f_idx = inf_idx = 0
         useful_trap_pct = trap_pct // 10  # 10% of the filler trap rate
         want_useful = True   # unique phase: alternates each slot
-        pad_slot = 0         # padding phase: 0-4 = filler, 5 = useful, then repeats
-        pad_useful_idx = 0   # padding phase: cycles through _repeatable_useful_names
         for _ in range(remaining_slots):
             both_exhausted = (u_idx >= len(all_useful)) and (f_idx >= len(all_filler))
 
             if both_exhausted:
-                # Padding phase: 5 filler then 1 useful, repeating
-                if pad_slot == 5:
-                    pad_name  = _repeatable_useful_names[pad_useful_idx % len(_repeatable_useful_names)]
-                    pad_useful_idx += 1
-                    trap_roll = useful_trap_pct
-                else:
-                    pad_name  = all_nonreinf_filler_inf[inf_idx % len(all_nonreinf_filler_inf)]
-                    inf_idx  += 1
-                    trap_roll = trap_pct
-                if trap_roll > 0 and self.random.randint(1, 100) <= trap_roll:
+                # Padding phase: pure filler (trap-substituted at trap_pct).
+                pad_name = all_nonreinf_filler_inf[inf_idx % len(all_nonreinf_filler_inf)]
+                inf_idx += 1
+                if trap_pct > 0 and self.random.randint(1, 100) <= trap_pct:
                     itempool.append(self.create_item(_next_trap()))
                 else:
                     itempool.append(self.create_item(pad_name))
-                pad_slot = (pad_slot + 1) % 6
             else:
                 # Unique phase: 1:1 useful:filler
                 if want_useful:
@@ -1615,16 +1876,100 @@ class aomWorld(World):
         Rules.set_rules(self)
 
     def pre_fill(self) -> None:
-        """Place locally-staged filler items into this player's own unfilled
-        locations using fast_fill.  Only runs when local_filler_frequency > 0
-        and there is more than one player in the multiworld."""
-        if not self.local_filler_items:
+        """Pre-fill phase.  Two responsibilities:
+
+          1. When `max_keys_on_keyrings >= 2`, plando each scenario's
+             individual Scenario Key item onto its `Key for ...` virtual
+             location on this player's own slot.  When the player later
+             receives a Key Ring item, the client auto-checks those
+             locations and the server broadcasts standard `ItemSend`
+             events for every Scenario Key the ring delivers — matching
+             the gem-shop UX.
+
+          2. Place locally-staged filler items into this player's own
+             unfilled locations using `fast_fill` (only when
+             `local_filler_frequency > 0` and the multiworld has more
+             than one player).
+        """
+        from BaseClasses import Item as _Item, ItemClassification as _IC
+
+        # --- Key delivery plando (max >= 2) ---
+        if int(getattr(self, "max_keys_on_keyrings", 0)) >= 2:
+            from .locations.Locations import (
+                KEY_DELIVERY_SCENARIO_TO_LOC_ID as _KD_S2L,
+                location_id_to_name as _lid2name,
+            )
+            from .locations.Scenarios import aomScenarioData
+            disabled = self.disabled_campaigns
+            for scen in aomScenarioData:
+                if scen.campaign in disabled:
+                    continue
+                sid = scen.global_number
+                key_iid = self.scenario_to_key_id.get(sid)
+                loc_id  = _KD_S2L.get(sid)
+                if key_iid is None or loc_id is None:
+                    continue
+                loc_name = _lid2name.get(loc_id)
+                if not loc_name:
+                    continue
+                try:
+                    loc = self.multiworld.get_location(loc_name, self.player)
+                except KeyError:
+                    continue
+                if loc.item is not None:
+                    continue  # already filled (shouldn't happen)
+                key_name = Items.item_id_to_name.get(key_iid, f"key_{key_iid}")
+                ap_item = _Item(key_name, _IC.filler, key_iid, self.player)
+                loc.place_locked_item(ap_item)
+
+        # --- Local-filler fast_fill (unchanged) ---
+        if self.local_filler_items:
+            from Fill import fast_fill
+            unfilled = self.multiworld.get_unfilled_locations(self.player)
+            self.random.shuffle(unfilled)
+            self.random.shuffle(self.local_filler_items)
+            fast_fill(self.multiworld, self.local_filler_items, unfilled)
+
+
+    def write_spoiler(self, spoiler_handle) -> None:
+        """Emit Key Ring legend into the spoiler log so the player can see
+        which scenarios each ring carries.  Only emits when
+        `max_keys_on_keyrings >= 2` (rings are actually in use)."""
+        if int(getattr(self, "max_keys_on_keyrings", 0)) < 2:
             return
-        from Fill import fast_fill  # deferred: Fill only exists inside the AP process
-        unfilled = self.multiworld.get_unfilled_locations(self.player)
-        self.random.shuffle(unfilled)
-        self.random.shuffle(self.local_filler_items)
-        fast_fill(self.multiworld, self.local_filler_items, unfilled)
+        if not self.ring_item_id_to_scenarios:
+            return
+        from .locations.Scenarios import aomScenarioData
+        sid_to_display = {s.global_number: s.display_name for s in aomScenarioData}
+
+        slot_label = f"Player {self.player}"
+        try:
+            player_name = self.multiworld.get_player_name(self.player)
+            slot_label = f"{slot_label} ({player_name})"
+        except Exception:
+            pass
+
+        spoiler_handle.write(
+            f"\n\nAge of Mythology Retold — Key Ring contents ({slot_label}):\n"
+        )
+        # Order rings by their index (1, 2, 3, ...).
+        ordered = sorted(
+            self.ring_item_id_to_scenarios.items(),
+            key=lambda kv: Items.RING_ITEM_ID_TO_INDEX.get(kv[0], kv[0]),
+        )
+        starter_id = self.starter_ring_item_id
+        for ring_item_id, scenarios in ordered:
+            ring_name = self.ring_display_names.get(
+                ring_item_id, Items.item_id_to_name.get(ring_item_id, str(ring_item_id))
+            )
+            tag = " [starter]" if ring_item_id == starter_id else ""
+            spoiler_handle.write(f"  {ring_name}{tag}:\n")
+            for sid in scenarios:
+                key_name = Items.item_id_to_name.get(
+                    self.scenario_to_key_id.get(sid, -1),
+                    f"{sid_to_display.get(sid, sid)} Scenario Key",
+                )
+                spoiler_handle.write(f"    - {key_name}\n")
 
 
     def fill_slot_data(self) -> Mapping[str, Any]:
@@ -1665,11 +2010,34 @@ class aomWorld(World):
         data["archaic_forbids"]       = self.archaic_forbids
         data["god_power_assignments"] = self.god_power_assignments
 
-        # Scenario-key bundling
-        data["unlock_sets_of_scenarios"] = int(self.unlock_sets_of_scenarios)
-        data["scenario_to_key_id"]       = dict(self.scenario_to_key_id)
-        data["bundle_display_names"]     = dict(self.bundle_display_names)
-        data["starter_bundle_key_id"]    = self.starter_bundle_key_id
+        # Scenario unlock items: per-scenario keys (max==1) or Key Rings (max>=2).
+        data["max_keys_on_keyrings"]      = int(self.max_keys_on_keyrings)
+        data["scenario_to_key_id"]        = dict(self.scenario_to_key_id)
+        data["scenario_to_ring_item_id"]  = dict(self.scenario_to_ring_item_id)
+        # ring_item_id_to_scenarios uses int keys here -> stringify for JSON
+        data["ring_item_id_to_scenarios"] = {
+            str(rid): list(sids)
+            for rid, sids in self.ring_item_id_to_scenarios.items()
+        }
+        data["ring_display_names"]        = {
+            str(rid): name for rid, name in self.ring_display_names.items()
+        }
+        data["starter_ring_item_id"]      = self.starter_ring_item_id
+        data["starter_scenario_key_ids"]  = list(self.starter_scenario_key_ids)
+        # Key delivery locations (max >= 2): client auto-checks these on ring
+        # receipt so the server broadcasts standard ItemSend events for each
+        # bundled Scenario Key.
+        if int(self.max_keys_on_keyrings) >= 2:
+            from .locations.Locations import KEY_DELIVERY_SCENARIO_TO_LOC_ID as _KD_S2L
+            from .locations.Scenarios import aomScenarioData
+            data["scenario_to_key_delivery_loc_id"] = {
+                s.global_number: _KD_S2L[s.global_number]
+                for s in aomScenarioData
+                if s.campaign not in self.disabled_campaigns
+                and s.global_number in _KD_S2L
+            }
+        else:
+            data["scenario_to_key_delivery_loc_id"] = {}
         # Per-scenario display label keyed by global_number.  Lets the client
         # render /progress from structured data rather than parsing item-name
         # strings — avoids the "NA " double-prefix / missing-prefix bug.
