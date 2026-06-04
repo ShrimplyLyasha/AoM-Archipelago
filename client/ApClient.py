@@ -358,7 +358,7 @@ def _get_atlantis_status(ctx: "AoMContext") -> tuple[str, bool]:
 
 
 def _ap_client_buy_shop_slot(ctx: "AoMContext", slot_id: str) -> None:
-    """Process an AP-client gem-shop purchase.
+    """Process an AP-client gem-shop purchase (A-D).
 
     Replaces the in-game XS shop's AP_SHOP aiEcho path.  Routes through the
     same `_resolve_shop_signal` so dedup + persistence + hint broadcast all
@@ -371,8 +371,6 @@ def _ap_client_buy_shop_slot(ctx: "AoMContext", slot_id: str) -> None:
     if slot_id in gc.purchased_slots:
         return
     loc_ids = _resolve_shop_signal(gc, slot_id)
-    # ITEM slots return real location ids; HINT slots return [] and broadcast
-    # internally via _send_shop_hints.
     new_locs = [lid for lid in loc_ids
                 if lid not in gc.sent_checks and lid not in gc.server_known_checks]
     for lid in new_locs:
@@ -381,8 +379,49 @@ def _ap_client_buy_shop_slot(ctx: "AoMContext", slot_id: str) -> None:
         from .GameClient import save_sent_checks
         save_sent_checks(gc)
         asyncio.ensure_future(ctx.on_locations_received_batch(new_locs))
-    # _resolve_shop_signal already calls _update_atlantis_ui to refresh gems
-    # display; that path also refreshes the gem-shop tab buttons.
+
+
+def _ap_client_buy_shop_e_card(ctx: "AoMContext", deck_idx: int,
+                                loc_id: int, kind: str) -> None:
+    """Process an AP-client Shop E card purchase.
+
+    Bookkeeping mirrors `_resolve_shop_signal`:
+      * append `E_<loc_id>` to purchased_slots for gem accounting
+      * persist shop state + rewrite aom_state.xs
+      * send the location check for the card
+      * if kind == "hint", trigger a mission-hint broadcast for an unbeaten
+        scenario (range covers all currently-active scenarios)
+
+    No-op if E disabled or this card already bought.
+    """
+    from .GameClient import save_shop_state, save_sent_checks, write_aom_state
+    gc = ctx.game_ctx
+    if not gc.shop_e_enabled:
+        return
+    slot_id = f"E_{loc_id}"
+    if slot_id in gc.purchased_slots:
+        return
+    gc.purchased_slots.add(slot_id)
+    save_shop_state(gc)
+    write_aom_state(gc)
+
+    # Hint cards hold no reward — they never check their location, so no item
+    # is sent.  Item/filler cards check the location as normal.
+    if kind != "hint" and loc_id not in gc.sent_checks and loc_id not in gc.server_known_checks:
+        gc.sent_checks.add(loc_id)
+        save_sent_checks(gc)
+        asyncio.ensure_future(ctx.on_locations_received_batch([loc_id]))
+
+    if kind == "hint":
+        # Reveal exactly one random unbeaten mission's checks.  send_mission_hints
+        # draws from every campaign (all of aomScenarioData), so NA / GG / any
+        # future campaign are all candidates automatically.
+        try:
+            ctx.send_mission_hints((1, 1))
+        except Exception as ex:
+            logger.warning(f"Shop E hint broadcast failed: {ex}")
+
+    _update_atlantis_ui(ctx)
 
 
 def _update_atlantis_ui(ctx: "AoMContext") -> None:
@@ -497,10 +536,37 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             if total_checks > 0:
                 scenario_check_counts[scenario.global_number] = (found_checks, total_checks)
         
+        # Full gate 1-5 in-logic replica: reuse the generation-side rule math
+        # against a name→count multiset of the player's received items so the
+        # GUI can flag scenarios that are reachable right now.
+        scenario_in_logic = {}
+        try:
+            from ..items.Items import ID_TO_ITEM
+            from ..rules.Rules import compute_scenarios_in_logic
+            from collections import Counter
+            received_counts = Counter()
+            for _iid in ctx.game_ctx.received_items:
+                _it = ID_TO_ITEM.get(_iid)
+                if _it is not None:
+                    received_counts[_it.item_name] += 1
+            scenario_in_logic = compute_scenarios_in_logic(
+                received_counts,
+                god_assignments,
+                campaign_unlocked_by_id,
+                scenario_to_gate_id,
+                held_gates,
+                mk,
+                disabled_ids,
+            )
+        except Exception as _ex:
+            import logging
+            logging.getLogger(__name__).warning(f"in-logic computation failed: {_ex}")
+
         ctx.ui.update_scenarios_view(
             mk, scenario_to_gate_id, gate_display_names,
             held_gates, campaign_unlocked_by_id, disabled_ids,
             scenario_to_god, scenario_check_counts,
+            scenario_in_logic,
         )
 
     if hasattr(ctx.ui, "update_civs_view"):
@@ -544,7 +610,10 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
                 shop_obelisk_assignments=gc.shop_obelisk_assignments,
                 purchased_slots=set(gc.purchased_slots),
                 info_level=info_level,
+                shop_e_enabled=bool(gc.shop_e_enabled),
+                shop_e_decks=gc.shop_e_decks,
                 on_buy_clicked=lambda sid: _ap_client_buy_shop_slot(ctx, sid),
+                on_buy_e_card=lambda di, lid, kind: _ap_client_buy_shop_e_card(ctx, di, lid, kind),
             )
 
     if hasattr(ctx.ui, "update_relics_view"):
@@ -557,6 +626,7 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
             checked_locs=checked_locs,
             disabled_campaign_ids=disabled_ids,
             campaign_unlocked_by_id=campaign_unlocked_by_id,
+            scenario_in_logic=locals().get("scenario_in_logic", {}),
         )
 
 
@@ -749,7 +819,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
     # @staticmethod
     # def _is_civ_item(item) -> bool:
     #     """True only for items whose type carries a `culture` field (age unlocks,
-    #     unit unlocks, myth unit unlocks). Reinforcements, hero stat boosts, hero
+    #     unit unlocks, myth unit unlocks). Starting army items, hero stat boosts, hero
     #     special effects, hero action boosts, and villager items are generic and
     #     always return False regardless of the unit or hero's in-game civ."""
     #     try:
@@ -791,7 +861,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
         """Show Greek age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks,
         and villager carry capacity items.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         ctx = self.ctx
         try:
             from ..items.Items import aomItemData, AgeUnlock
@@ -824,7 +894,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
         """Show Egyptian age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks,
         and villager carry capacity items.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         ctx = self.ctx
         try:
             from ..items.Items import aomItemData, AgeUnlock
@@ -857,7 +927,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
         """Show Norse age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks,
         and villager carry capacity items.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         ctx = self.ctx
         try:
             from ..items.Items import aomItemData, AgeUnlock
@@ -890,7 +960,7 @@ class AoMCommandProcessor(ClientCommandProcessor):
         """Show Atlantean age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks,
         and villager carry capacity items.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         ctx = self.ctx
         try:
             from ..items.Items import aomItemData, AgeUnlock
@@ -921,28 +991,28 @@ class AoMCommandProcessor(ClientCommandProcessor):
 
     # UNUSED: shadowed by later `_cmd_generic` (~line 868). Kept (commented).
     # def _cmd_generic(self) -> None:
-    #     """Show received generic items: resources, passive income, reinforcements,
+    #     """Show received generic items: resources, passive income, starting army items,
     #     hero stat boosts, hero abilities, villager discounts, starting tech items,
-    #     gems, and shop info. Reinforcements and hero items are generic regardless
+    #     gems, and shop info. Starting army items and hero items are generic regardless
     #     of the unit or hero's in-game civilization."""
     #     self._cmd_civ_items("Generic", lambda item: not self._is_civ_item(item))
 
     def _cmd_chinese(self) -> None:
         """Show Chinese age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         self._cmd_civ_progress("Chinese")
 
     def _cmd_japanese(self) -> None:
         """Show Japanese age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         self._cmd_civ_progress("Japanese")
 
     def _cmd_aztec(self) -> None:
         """Show Aztec age progress and received civ-specific items.
         Includes: age unlocks, unit unlocks, myth unit unlocks.
-        Does NOT include reinforcements or hero items (those are generic — use /generic)."""
+        Does NOT include starting army items or hero items (those are generic — use /generic)."""
         self._cmd_civ_progress("Aztec")
 
     def _cmd_civ_progress(self, culture: str) -> None:
@@ -1537,6 +1607,10 @@ class AoMContext(CommonContext):
         self.game_ctx.shop_obelisk_assignments = slot_data.get("shop_obelisk_assignments", {})
         self.game_ctx.shop_item_details     = {int(k): v for k, v in slot_data.get("shop_item_details", {}).items()}
         self.game_ctx.shop_hint_config      = slot_data.get("shop_hint_config", {})
+        # Shop E (gem sink) — list of 4 decks, each a list of card-info dicts.
+        # Empty/missing when the budget gate kept E off, or for legacy slots.
+        self.game_ctx.shop_e_enabled       = bool(slot_data.get("shop_e_enabled", False))
+        self.game_ctx.shop_e_decks         = slot_data.get("shop_e_decks", []) or []
 
         # Scenario unlock items: per-scenario Scenario Keys (max==1) or Key
         # Rings (max>=2).  See aom/__init__.py::_generate_keyring_assignments.
@@ -1652,6 +1726,39 @@ class AoMContext(CommonContext):
                         self.send_msgs([{"cmd": "LocationChecks", "locations": _kd_locs}])
                     )
 
+        # Progressive Wonder notification — when a copy arrives, count the new
+        # total and emit a chat line describing the cumulative state.  Tiered
+        # wording so the line always reflects the strictly-best perks active.
+        # Skipped on connect-time resend (index == 0) to avoid spam.
+        PROGRESSIVE_WONDER_ID = 5104
+        if index > 0 and PROGRESSIVE_WONDER_ID in item_ids:
+            _new_count = self.game_ctx.received_items.count(PROGRESSIVE_WONDER_ID) + \
+                         sum(1 for _i in item_ids if _i == PROGRESSIVE_WONDER_ID)
+            _new_count = min(_new_count, 6)
+            # Build cumulative wording reflecting the strictly-best perks active.
+            # Tier scheme:
+            #   1 build in Mythic age | 2 -20% cost | 3 +35% build speed
+            #   4 build anywhere      | 5 any age   | 6 -40% cost (extra 20%)
+            # The placement phrase combines WHERE (anywhere from tier 4) and
+            # WHEN (any age from tier 5) — "anywhere" never replaces "any age".
+            _perks: list[str] = []
+            if _new_count >= 5:
+                _perks.append("Wonders can be built anywhere in any age")
+            elif _new_count >= 4:
+                _perks.append("Wonders can be built anywhere in the Mythic age")
+            elif _new_count >= 1:
+                _perks.append("Wonders can be built in the Mythic age")
+            if _new_count >= 6:
+                _perks.append("Wonders cost 40% less")
+            elif _new_count >= 2:
+                _perks.append("Wonders cost 20% less")
+            if _new_count >= 3:
+                _perks.append("Wonders build 35% faster")
+            _summary = ", ".join(_perks) if _perks else "(no perks yet)"
+            logger.info(
+                f"{_new_count} Wonder Item{'s' if _new_count != 1 else ''}: {_summary}"
+            )
+
         PROG_INFO_ID = 9997
         old_info_level = self.game_ctx.received_items.count(PROG_INFO_ID)
 
@@ -1689,6 +1796,12 @@ class AoMContext(CommonContext):
         """
         Scout all unchecked locations in a random set of unbeaten scenarios.
         missions_range: (min, max) number of missions to hint.
+
+        Candidate missions are drawn from the entire scenario table
+        (`aomScenarioData`) filtered to this player's pool, so every campaign —
+        FotT, New Atlantis, Golden Gift, and any future campaign (e.g. Chinese)
+        added to `aomScenarioData` / `SCENARIO_TO_LOCATIONS` — is automatically
+        eligible.  No campaign or scenario-number range is hardcoded here.
         """
         import random
         from ..locations.Locations import aomLocationData, aomLocationType

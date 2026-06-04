@@ -2045,11 +2045,15 @@ ITEMS_PER_SHOP = 15     # Number of item-bearing locations per tier
 # `hint_obelisks` is the number of hint slots — slot 1 is always the
 # progressive-info hint; slots 2..N are mission hints chosen at fill time.
 SHOP_TIER_CONFIGS = [
-    ("A", "Marsh Shop",  5, 4),
-    ("B", "Desert Shop", 4, 3),
-    ("C", "Grass Shop",  3, 2),
-    ("D", "Hades Shop",  2, 1),
+    ("A", "Shop A", 6, 3),
+    ("B", "Shop B", 4, 3),
+    ("C", "Shop C", 3, 2),
+    ("D", "Shop D", 2, 1),
 ]
+
+# Tiers that get a Progressive Shop Info hint slot at HINT_1.  Every shop
+# now has a PSI button — Shop A's HINT_1 is PSI; HINT_2..N are mission hints.
+PROGRESSIVE_INFO_TIERS: tuple = ("A", "B", "C", "D")
 
 # Slot order — matches APShopSlotFromIndex in archipelago.xs (1-indexed).
 # Concatenates all item slots first, then all hint slots.  Editing this list
@@ -2063,11 +2067,16 @@ SHOP_SLOT_ORDER: list[str] = (
 # # when emitting per-slot assignments to aom_state.xs.
 # SHOP_SLOT_TO_INDEX: dict[str, int] = {s: i+1 for i, s in enumerate(SHOP_SLOT_ORDER)}
 
-# Progressive Shop Info location IDs — one per shop tier, after the 60 item locations.
-# Marsh→3920061, Desert→3920062, Grass→3920063, Hades→3920064
-PROGRESSIVE_INFO_IDS: dict[str, int] = {
+# Progressive Shop Info location IDs.  Reserves a stable slot for every tier
+# at the same offset as before (so older seeds keep working), but only B/C/D
+# are actually used; A's slot is intentionally unused since Shop A has no PSI
+# button.
+_PROGRESSIVE_INFO_IDS_ALL: dict[str, int] = {
     tier: SHOP_BASE_ID + 60 + i + 1
     for i, (tier, *_) in enumerate(SHOP_TIER_CONFIGS)
+}
+PROGRESSIVE_INFO_IDS: dict[str, int] = {
+    tier: _PROGRESSIVE_INFO_IDS_ALL[tier] for tier in PROGRESSIVE_INFO_TIERS
 }
 
 # Item location IDs per tier: each tier gets ITEMS_PER_SHOP (15) locations.
@@ -2096,9 +2105,34 @@ for _tier, _display, *_ in SHOP_TIER_CONFIGS:
         location_id_to_name[_loc_id] = _name
 
 # Progressive info display name format: "<tier display>: Progressive Shop Info"
+# Only registered for tiers that actually have a PSI slot (B, C, D).
 for _tier, _display, *_ in SHOP_TIER_CONFIGS:
-    _loc_id = PROGRESSIVE_INFO_IDS[_tier]
+    _loc_id = PROGRESSIVE_INFO_IDS.get(_tier)
+    if _loc_id is None:
+        continue
     _name   = f"{_display}: Progressive Shop Info"
+    location_name_to_id[_name] = _loc_id
+    location_id_to_name[_loc_id] = _name
+
+# -----------------------------------------------------------------------
+# Shop E — gem sink (4 decks of 12 "cards", revealed top-down).
+# Only spawned when the gem pool can afford all of A-D plus all of E.
+# Lives in a separate ID range above KEY_DELIVERY (which starts at 3920100).
+# -----------------------------------------------------------------------
+SHOP_E_BASE_ID            = 3921000
+SHOP_E_DECK_COUNT         = 4
+SHOP_E_DEFAULT_DECK_DEPTH = 12   # historical default — what the player gets on most seeds
+# Cap reserved per deck.  We register a large block of location IDs up front so
+# generation can scale Shop E up well past 48 cards when a future seed has very
+# many gems (e.g. extra campaigns), without having to thread a new schema.
+SHOP_E_MAX_DECK_DEPTH     = 50
+SHOP_E_MAX_TOTAL_CARDS    = SHOP_E_DECK_COUNT * SHOP_E_MAX_DECK_DEPTH   # 200
+
+SHOP_E_LOCATION_IDS: list[int] = list(
+    range(SHOP_E_BASE_ID, SHOP_E_BASE_ID + SHOP_E_MAX_TOTAL_CARDS)
+)
+for _i, _loc_id in enumerate(SHOP_E_LOCATION_IDS):
+    _name = f"Shop E: Card {_i + 1:03d}"
     location_name_to_id[_name] = _loc_id
     location_id_to_name[_loc_id] = _name
 

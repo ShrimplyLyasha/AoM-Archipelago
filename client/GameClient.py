@@ -299,6 +299,8 @@ class AoMGameContext:
     shop_item_details: dict = field(default_factory=dict)         # loc_id → {player, name, cls}
     shop_hint_config: dict  = field(default_factory=dict)         # slot_id → {type, ...}
     shop_slot_order: list   = field(default_factory=list)
+    shop_e_enabled: bool    = False
+    shop_e_decks: list      = field(default_factory=list)         # list of 4 decks; each = list of card dicts
     # Checks the AP server has already confirmed — used for in-memory
     # deduplication only. Never persisted to disk.
     server_known_checks: set[int] = field(default_factory=set)
@@ -483,8 +485,12 @@ def generate_ap_ai_xs(ctx: AoMGameContext, mods_local_dir: Path) -> None:
 
     lines.append("")
 
+    # APShop_<n>() XS bridge functions are no longer generated — all gem-shop
+    # purchases happen via the AP client GUI now.  Stubs are emitted only so
+    # any stale call sites in archipelago.xs compile; they intentionally do
+    # nothing (no aiEcho).
     for slot_index in range(1, len(SHOP_SLOT_ORDER) + 1):
-        lines.append(f'void APShop_{slot_index}() {{ aiEcho("{AP_SHOP_PREFIX}IDX:{slot_index}"); }}')
+        lines.append(f'void APShop_{slot_index}() {{}}')
         generated_count += 1
 
     lines.append("")
@@ -824,79 +830,21 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     # and leaves received-item units to the engine's natural gating.
 
     # ----------------------------------------------------------------
-    # APShopStateInit — sets shop globals and per-obelisk labels.
+    # APShopStateInit — STUB.  The in-game shop has been removed in favor
+    # of the AP-client Gem Shop tab.  We still emit an empty body so any
+    # call sites in archipelago.xs continue to compile without behavior.
     # ----------------------------------------------------------------
 
-    PROG_INFO_ID   = 9997
-    info_level     = sum(1 for i in ctx.received_items if i == PROG_INFO_ID)
-    gems_earned    = sum(1 for i in ctx.received_items if i == GEM_ITEM_ID)
-    available_gems = max(0, gems_earned - len(ctx.purchased_slots))
     update_bldgs_on = ctx.update_buildings_for_random_god
 
     def _xs(s): lines.append(s)
-    def _cls_rank(c): return {"trap":-1,"filler":0,"useful":1,"progression":2}.get(c,-1)
-    def _cls_disp(c): return {"trap":"Trap","filler":"Filler","useful":"Useful","progression":"Advancement"}.get(c,"?")
-    def _sanitize_xs_str(s):
-        """Transliterate non-ASCII characters to their closest ASCII equivalent.
-        XS string literals only support ASCII; accented/special chars cause token errors."""
-        import unicodedata
-        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
 
     _xs("")
     _xs("void APShopStateInit()")
     _xs("{")
-    _xs(f"    gAPShopAvailableGems = {available_gems};")
-    _xs(f"    gAPShopTierThreshold = {ctx.wins_to_open_shop};")
     _beaten = len(ctx.sent_checks & VICTORY_LOCATION_IDS)
     _xs('    trQuestVarSet("APBeatenScenarios", ' + str(_beaten) + ");")
     _xs('    trQuestVarSet("APRandom_Major_Gods", ' + ('1' if ctx.random_major_gods else '0') + ");")
-
-    for _sid in ctx.shop_slot_order:
-        _pv = "true" if _sid in ctx.purchased_slots else "false"
-        _xs(f"    gAPShopPurchased_{_sid} = {_pv};")
-        _xs('    trQuestVarSet("APPurchased_' + _sid + '", ' + ('1' if _sid in ctx.purchased_slots else '0') + ");")
-
-    for _oid, _lids in ctx.shop_obelisk_assignments.items():
-        _det = [ctx.shop_item_details.get(_l) for _l in _lids if ctx.shop_item_details.get(_l)]
-        _n   = len(_det)
-
-        # Main recipient = player with most items in this obelisk
-        def _main_recipient(det):
-            from collections import Counter
-            if not det: return "?"
-            counts = Counter(d.get("player_name","?") for d in det)
-            return counts.most_common(1)[0][0]
-
-        if not _det or info_level == 0:
-            _lbl = "? items\\n? is rarest\\n?: main recipient"
-        elif info_level == 1:
-            _lbl = str(_n) + " items\\n? is rarest\\n?: main recipient"
-        elif info_level == 2:
-            _top = _cls_disp(max((_d.get("classification","filler") for _d in _det), key=_cls_rank))
-            _lbl = str(_n) + " items\\n" + _top + " is rarest\\n?: main recipient"
-        elif info_level == 3:
-            _top = _cls_disp(max((_d.get("classification","filler") for _d in _det), key=_cls_rank))
-            _pl  = _sanitize_xs_str(_main_recipient(_det))
-            _lbl = str(_n) + " items\\n" + _top + " is rarest\\n" + _pl + ": main recipient"
-        else:
-            # Level 4: show count of rarest item type
-            _top     = max((_d.get("classification","filler") for _d in _det), key=_cls_rank)
-            _top_disp = _cls_disp(_top)
-            _top_cnt = sum(1 for _d in _det if _d.get("classification","filler") == _top)
-            _pl      = _sanitize_xs_str(_main_recipient(_det))
-            _lbl = (str(_n) + " items\\n" + _top_disp + " is rarest\\n\\n"
-                    + str(_top_cnt) + " " + _top_disp + " items\\n" + _pl + ": main recipient")
-        _lbl = _lbl.replace('"', '\\\\"'  )
-        _xs('    gAPShopLabel_' + _oid + ' = "' + _lbl + '";')
-
-    for _sid, _hcfg in ctx.shop_hint_config.items():
-        if _hcfg.get("type") == "progressive_info":
-            _lbl = "Better Shop Information"
-        else:
-            _rng = _hcfg.get("missions_range", (1,2))
-            _lbl = "Hints for " + str(_rng[0]) + "-" + str(_rng[1]) + " missions"
-        _xs('    gAPShopLabel_' + _sid + ' = "' + _lbl + '";')
-
     _xs("}")
 
     # Generate APTrapQueueInit — called from APActivateScenario
@@ -1293,8 +1241,14 @@ def _send_shop_hints(ctx: AoMGameContext, slot_id: str) -> None:
         return
 
     if hint_cfg.get("type") == "mission_hints":
-        missions_range = hint_cfg.get("missions_range", (1, 2))
-        ctx.client_interface.send_mission_hints(missions_range)
+        # New gen rolls a static missions_count; legacy seeds carry only the
+        # range.  Either way, pass an exact (n, n) tuple so the broadcast hints
+        # exactly the chosen number of missions.
+        count = hint_cfg.get("missions_count")
+        if count is None:
+            rng = hint_cfg.get("missions_range", (1, 2))
+            count = rng[0] if rng[0] == rng[1] else rng[0]
+        ctx.client_interface.send_mission_hints((count, count))
 
 
 def read_new_checks(ctx: AoMGameContext) -> list[int]:
@@ -1403,29 +1357,10 @@ def read_new_checks(ctx: AoMGameContext) -> list[int]:
                 trap_signals += 1
                 continue
 
-            if AP_SHOP_PREFIX in line:
-                m = re.search(r"AP_SHOP:IDX:(\d+)", line)
-                if m:
-                    try:
-                        slot_num = int(m.group(1))
-                        from ..locations.Locations import SHOP_SLOT_ORDER
-                        slot_id = SHOP_SLOT_ORDER[slot_num - 1] if 1 <= slot_num <= len(SHOP_SLOT_ORDER) else ""
-                    except (ValueError, IndexError):
-                        slot_id = ""
-                else:
-                    m2 = re.search(r"AP_SHOP:(\S+)", line)
-                    slot_id = m2.group(1) if m2 else ""
-                if not slot_id:
-                    logger.warning(f"Unrecognised shop signal in line: {line!r}")
-                    continue
-                shop_checks = _resolve_shop_signal(ctx, slot_id)
-                for loc_id in shop_checks:
-                    if loc_id not in ctx.sent_checks and loc_id not in ctx.server_known_checks:
-                        new_checks.append(loc_id)
-                        ctx.sent_checks.add(loc_id)
-                if shop_checks:
-                    save_sent_checks(ctx)
-                continue
+            # AP_SHOP_PREFIX parsing removed — in-game shop is no longer the
+            # purchase path.  All gem-shop buys come through the AP client GUI
+            # (ApClient._ap_client_buy_shop_slot).  Any stray AP_SHOP lines from
+            # a stale mod install are silently ignored.
 
             m = re.search(r"AP_CHECK:(\d+)", line)
             if not m:

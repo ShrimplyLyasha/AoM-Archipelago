@@ -43,7 +43,7 @@
 #     3300-3499 Kastor specials/stats                               (mixed)
 #     3500-3504 Campaign / section unlocks                          (progression)
 #     3510      Atlantis Key                                        (progression)
-#     4000-4099 Reinforcements                                      (filler/useful)
+#     4000-4099 StartingArmys                                      (filler/useful)
 #     5000-5009 Villager carry / cost                               (filler)
 #     5015-5027 Hero "Joins" + myth unit unlocks                    (useful/progression)
 #     5100-5103 Starting tech grants                                (useful/filler)
@@ -88,7 +88,7 @@ from ..locations.Campaigns import aomCampaignData
 
 BASE_ID = 0x3B0000  # 3866624 — AP location/item ID offset (added by Archipelago when serializing)
 BASE_RESOURCE = 30  # Base unit count for the small starting-resource items (Large = 4x)
-REINFORCEMENT_AMOUNT = 2  # Default count of units that reinforcement items spawn at the spawn marker
+STARTING_ARMY_AMOUNT = 2  # Default count of units that starting-army items spawn at the spawn marker
 
 
 # -----------------------------------------------------------------------
@@ -127,6 +127,16 @@ class AgeUnlock:
     """Progressive age unlock — Classical / Heroic / Mythic, in order, by stack
     count.  `culture` controls which civilization is unlocked
     ("Greek" / "Egyptian" / "Norse" / "Atlantean")."""
+    culture: str
+
+
+@dataclass
+class TitanAgeUnlock:
+    """Per-civ Titan Age unlock — Useful item.  While the player lacks the
+    Titan item matching the civ they are currently playing, the XS watcher
+    `APEnforceTitanLock` keeps the `SecretsOfTheTitans` tech disabled (so no
+    Titan can be summoned).  Holding the matching item lifts the lock.
+    `culture` is the civ string ("Greek"/"Egyptian"/.../"Aztec")."""
     culture: str
 
 
@@ -233,18 +243,18 @@ class RelicEffect:
 
 
 @dataclass
-class Reinforcement:
+class StartingArmy:
     """Spawn `amount` copies of a proto unit at the scenario's spawn marker.
     `unit_name` must match an in-game proto unit name (e.g. "Hoplite",
-    "Berserk").  Filler-tier; ReinforcementUseful is the useful-tier variant."""
+    "Berserk").  Filler-tier; StartingArmyUseful is the useful-tier variant."""
     unit_name: str
     amount: int
 
 
-# Useful variant of Reinforcement — classified as useful instead of filler.
+# Useful variant of StartingArmy — classified as useful instead of filler.
 # Must be defined before the classification dict.
-class ReinforcementUseful(Reinforcement):
-    """Useful-tier reinforcement — same payload as Reinforcement; the class
+class StartingArmyUseful(StartingArmy):
+    """Useful-tier starting-army — same payload as StartingArmy; the class
     identity is the only difference, which routes it to the useful slot in
     `item_type_to_classification`."""
     pass
@@ -455,6 +465,28 @@ class GenericVillagerDiscount:
     Atlantean) by `reduction`.  Generic — never civ-filtered."""
     reduction: int
 
+
+@dataclass
+class ChironSwimmingLessons:
+    """One-shot useful: gives ChironSPC the Amphibious movement type so he can
+    swim across water as well as walk on land.  Detected by item id; XS reads
+    no fields off this instance."""
+    pass
+
+
+@dataclass
+class FavorOnHumanKill:
+    """Killing any enemy HumanSoldier-class unit grants the player favor.
+    XS loops players 2-7 so every enemy slot triggers."""
+    pass
+
+
+@dataclass
+class FavorOnMythKill:
+    """Killing any enemy MythUnit-class unit grants the player favor.
+    XS loops players 2-7 so every enemy slot triggers."""
+    pass
+
 @dataclass
 class VillagerCarryCapacity:
     """Civ-specific villager carry boost.  Civ encoded via `unit_name`
@@ -496,6 +528,20 @@ class StartingBuildingsTech:
     pass
 
 
+@dataclass
+class ProgressiveWonder:
+    """Progressive Wonder item — stackable Useful item.  Up to 6 copies in the
+    pool.  Each copy the player owns unlocks one tier of wonder-related perks:
+        1: Wonders can be built once the player reaches the Mythic Age.
+        2: Wonders cost 20% less (percent resource reduction).
+        3: Wonders build 35% faster (RelicTreasureOfTlacopan-style BuildPoints).
+        4: Wonders can be built anywhere (PlaceAnywhere flag, like Tartarian Gate).
+        5: Wonders can be built in any age (unforbid Wonder + enable WonderAge*).
+        6: Wonders cost 40% less (extra 20% on top of tier 2).
+    """
+    pass
+
+
 class Resource(enum.Enum):
     FOOD = 1
     WOOD = 2
@@ -515,7 +561,7 @@ ItemType = Union[
     PassiveIncomeLarge,
     RelicTrickle,
     RelicEffect,
-    Reinforcement,
+    StartingArmy,
     UnitStatBonus,
     UnitUnlockProgression,
     UnitUnlockUseful,
@@ -530,22 +576,23 @@ item_type_to_classification: dict[type, ItemClassification] = {
     Victory:                ItemClassification.progression,
     Campaign:               ItemClassification.progression,
     AgeUnlock:              ItemClassification.progression,
+    TitanAgeUnlock:         ItemClassification.useful,
     FinalUnlock:            ItemClassification.progression,
     ScenarioKey:            ItemClassification.progression,
     KeyRing:                ItemClassification.progression,
-    Gem:                    ItemClassification.filler,
+    Gem:                    ItemClassification.useful,
     ProgressiveShopInfo:    ItemClassification.useful,
     Trap:                   ItemClassification.trap,
     UnitUnlockProgression:  ItemClassification.progression,
     StartingResources:      ItemClassification.filler,
     PassiveIncome:          ItemClassification.filler,
-    Reinforcement:          ItemClassification.filler,
+    StartingArmy:          ItemClassification.filler,
     HeroStatBoostFiller:    ItemClassification.filler,
     StartingResourcesLarge: ItemClassification.filler,
     PassiveIncomeLarge:     ItemClassification.filler,
     RelicTrickle:           ItemClassification.useful,
     RelicEffect:            ItemClassification.useful,
-    ReinforcementUseful:    ItemClassification.useful,
+    StartingArmyUseful:    ItemClassification.useful,
     UnitStatBonus:          ItemClassification.useful,
     UnitUnlockUseful:       ItemClassification.useful,
     HeroStatBoost:          ItemClassification.useful,
@@ -554,6 +601,9 @@ item_type_to_classification: dict[type, ItemClassification] = {
     ArkantosHousing:        ItemClassification.useful,
     VillagerCarryCapacity:   ItemClassification.filler,
     GenericVillagerDiscount: ItemClassification.filler,
+    ChironSwimmingLessons:   ItemClassification.useful,
+    FavorOnHumanKill:        ItemClassification.useful,
+    FavorOnMythKill:         ItemClassification.useful,
     MythUnitUnlockProgression:   ItemClassification.progression,
     MythUnitUnlockUseful:        ItemClassification.progression,
     MythUnitUnlockFiller:        ItemClassification.progression,
@@ -573,6 +623,7 @@ item_type_to_classification: dict[type, ItemClassification] = {
     StartingMilitaryTech:           ItemClassification.useful,
     StartingDockTech:               ItemClassification.filler,
     StartingBuildingsTech:          ItemClassification.filler,
+    ProgressiveWonder:              ItemClassification.useful,
 }
 
 
@@ -732,6 +783,21 @@ class aomItemData(enum.IntEnum):
     AZTEC_AGE_UNLOCK      = 1020, "Progressive Aztec Age Unlock",     AgeUnlock("Aztec")     # only in pool when random_major_gods is on
 
     # -----------------------------------------------------------------------
+    # Titan Age unlocks (IDs 1100-1106) — one Useful item per civ.  While the
+    # player lacks the item matching the civ they're playing, XS keeps the
+    # SecretsOfTheTitans tech disabled (no Titan).  Non-Greek/Egyptian/Norse
+    # civs only enter the pool when random_major_gods is on (same as their
+    # age unlocks above).
+    # -----------------------------------------------------------------------
+    GREEK_TITAN_UNLOCK     = 1100, "Unlock Greek Titan Age",     TitanAgeUnlock("Greek")
+    EGYPTIAN_TITAN_UNLOCK  = 1101, "Unlock Egyptian Titan Age",  TitanAgeUnlock("Egyptian")
+    NORSE_TITAN_UNLOCK     = 1102, "Unlock Norse Titan Age",     TitanAgeUnlock("Norse")
+    ATLANTEAN_TITAN_UNLOCK = 1103, "Unlock Atlantean Titan Age", TitanAgeUnlock("Atlantean")
+    CHINESE_TITAN_UNLOCK   = 1104, "Unlock Chinese Titan Age",   TitanAgeUnlock("Chinese")
+    JAPANESE_TITAN_UNLOCK  = 1105, "Unlock Japanese Titan Age",  TitanAgeUnlock("Japanese")
+    AZTEC_TITAN_UNLOCK     = 1106, "Unlock Aztec Titan Age",     TitanAgeUnlock("Aztec")
+
+    # -----------------------------------------------------------------------
     # Unit Unlocks
     # Unlockable units are forbidden at scenario start and unforbidden when
     # the corresponding item is received (see APActivateScenario in xs).
@@ -861,49 +927,51 @@ class aomItemData(enum.IntEnum):
     RELIC_EFFECT_BUILD_SPEED  = 38, "Each Owned Relic Makes Buildings Build 10% faster",            RelicEffect("build_speed")
 
     # -----------------------------------------------------------------------
-    # Reinforcements — Filler
-    # Each item spawns REINFORCEMENT_AMOUNT (2) units near the spawn point.
+    # StartingArmys — Filler
+    # Each item spawns STARTING_ARMY_AMOUNT (2) units near the spawn point.
     # -----------------------------------------------------------------------
-    REINFORCEMENT_ANUBITES        = 4000, "1 Anubite",                                 Reinforcement("Anubite",          1)
-    REINFORCEMENT_HOPLITE         = 4001, f"{REINFORCEMENT_AMOUNT} Hoplites",          Reinforcement("Hoplite",          REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_DWARF           = 4002, f"{REINFORCEMENT_AMOUNT} Dwarves",           Reinforcement("Dwarf",            REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_MERCENARY       = 4003, f"{REINFORCEMENT_AMOUNT} Mercenaries",       Reinforcement("Mercenary",        REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_MERCENARY_CAV   = 4004, f"{REINFORCEMENT_AMOUNT} Mercenary Cavalry", Reinforcement("MercenaryCavalry", REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_AUTOMATON       = 4006, f"{REINFORCEMENT_AMOUNT} Automatons",        Reinforcement("Automaton",        REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_WADJET          = 4007, "1 Wadjet",                                  Reinforcement("Wadjet",           1)
-    REINFORCEMENT_ULFSARK         = 4008, f"{REINFORCEMENT_AMOUNT} Berserks",          Reinforcement("Berserk",          REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_SLINGER         = 4009, f"{REINFORCEMENT_AMOUNT} Slingers",          Reinforcement("Slinger",          REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_TURMA           = 4010, f"{REINFORCEMENT_AMOUNT} Turmas",            Reinforcement("Turma",            REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_KATASKOPOS      = 4011, f"{REINFORCEMENT_AMOUNT} Kataskopos",        Reinforcement("Kataskopos",       REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_VILLAGER        = 4013, f"{REINFORCEMENT_AMOUNT} Greek Villagers",   Reinforcement("VillagerGreek",    REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_BATTLE_BOAR     = 4015, "1 Battle Boar",                             Reinforcement("BattleBoar",       1)
-    REINFORCEMENT_RAIDING_CAVALRY = 4020, f"{REINFORCEMENT_AMOUNT} Raiding Cavalry",   Reinforcement("RaidingCavalry",   REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_ORACLE          = 4021, f"{REINFORCEMENT_AMOUNT} Oracles",           Reinforcement("Oracle",           REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_CYCLOPS         = 4022, "1 Cyclops",                                 Reinforcement("Cyclops",          1)
-    REINFORCEMENT_TROLL           = 4023, "1 Troll",                                   Reinforcement("Troll",            1)
-    REINFORCEMENT_BEHEMOTH        = 4024, "1 Behemoth",                                Reinforcement("Behemoth",         1)
-    REINFORCEMENT_HAMADRYAD       = 4037, "1 Hamadryad",                               Reinforcement("Hamadryad",        1)
-    REINFORCEMENT_DRAUGR          = 4038, "1 Draugr",                                  Reinforcement("Draugr",           1)
+    STARTING_ARMY_ANUBITES        = 4000, "1 Anubite",                                 StartingArmy("Anubite",          1)
+    STARTING_ARMY_HOPLITE         = 4001, f"{STARTING_ARMY_AMOUNT} Hoplites",          StartingArmy("Hoplite",          STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_DWARF           = 4002, f"{STARTING_ARMY_AMOUNT} Dwarves",           StartingArmy("Dwarf",            STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_MERCENARY       = 4003, f"{STARTING_ARMY_AMOUNT} Mercenaries",       StartingArmy("Mercenary",        STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_MERCENARY_CAV   = 4004, f"{STARTING_ARMY_AMOUNT} Mercenary Cavalry", StartingArmy("MercenaryCavalry", STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_AUTOMATON       = 4006, f"{STARTING_ARMY_AMOUNT} Automatons",        StartingArmy("Automaton",        STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_WADJET          = 4007, "1 Wadjet",                                  StartingArmy("Wadjet",           1)
+    STARTING_ARMY_ULFSARK         = 4008, f"{STARTING_ARMY_AMOUNT} Berserks",          StartingArmy("Berserk",          STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_SLINGER         = 4009, f"{STARTING_ARMY_AMOUNT} Slingers",          StartingArmy("Slinger",          STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_TURMA           = 4010, f"{STARTING_ARMY_AMOUNT} Turmas",            StartingArmy("Turma",            STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_KATASKOPOS      = 4011, f"{STARTING_ARMY_AMOUNT} Kataskopos",        StartingArmy("Kataskopos",       STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_VILLAGER        = 4013, f"{STARTING_ARMY_AMOUNT} Greek Villagers",   StartingArmy("VillagerGreek",    STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_BATTLE_BOAR     = 4015, "1 Battle Boar",                             StartingArmy("BattleBoar",       1)
+    STARTING_ARMY_RAIDING_CAVALRY = 4020, f"{STARTING_ARMY_AMOUNT} Raiding Cavalry",   StartingArmy("RaidingCavalry",   STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_ORACLE          = 4021, f"{STARTING_ARMY_AMOUNT} Oracles",           StartingArmy("Oracle",           STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_CYCLOPS         = 4022, "1 Cyclops",                                 StartingArmy("Cyclops",          1)
+    STARTING_ARMY_TROLL           = 4023, "1 Troll",                                   StartingArmy("Troll",            1)
+    STARTING_ARMY_BEHEMOTH        = 4024, "1 Behemoth",                                StartingArmy("Behemoth",         1)
+    STARTING_ARMY_HAMADRYAD       = 4037, "1 Hamadryad",                               StartingArmy("Hamadryad",        1)
+    STARTING_ARMY_DRAUGR          = 4038, "1 Draugr",                                  StartingArmy("Draugr",           1)
 
     # -----------------------------------------------------------------------
-    # Reinforcements — Useful
+    # StartingArmys — Useful
     # Strong units or workers that provide meaningful advantage.
     # -----------------------------------------------------------------------
-    REINFORCEMENT_FIRE_GIANT      = 4012, "1 Fire Giant",                              ReinforcementUseful("FireGiant",         1)
-    REINFORCEMENT_CITIZEN         = 4014, f"{REINFORCEMENT_AMOUNT} Citizens",          Reinforcement("VillagerAtlantean", REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_ROC             = 4017, "1 Roc",                                     ReinforcementUseful("Roc",               1)
-    REINFORCEMENT_PRIEST          = 4018, f"{REINFORCEMENT_AMOUNT} Priests",           Reinforcement("Priest",            REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_CALADRIA        = 4019, "1 Caladria",                                Reinforcement("Caladria",          1)
-    REINFORCEMENT_SIREN           = 4039, "1 Siren",                                   ReinforcementUseful("Siren",             1)
-    REINFORCEMENT_LAMPADES        = 4025, "1 Lampades",                                ReinforcementUseful("Lampades",          1)
-    REINFORCEMENT_PHOENIX         = 4026, "1 Phoenix",                                 ReinforcementUseful("Phoenix",           1)
-    REINFORCEMENT_COLOSSUS        = 4027, "1 Colossus",                                ReinforcementUseful("Colossus",          1)
+    STARTING_ARMY_FIRE_GIANT      = 4012, "1 Fire Giant",                              StartingArmyUseful("FireGiant",         1)
+    STARTING_ARMY_CITIZEN         = 4014, f"{STARTING_ARMY_AMOUNT} Citizens",          StartingArmy("VillagerAtlantean", STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_ROC             = 4017, "1 Roc",                                     StartingArmyUseful("Roc",               1)
+    STARTING_ARMY_PRIEST          = 4018, f"{STARTING_ARMY_AMOUNT} Priests",           StartingArmy("Priest",            STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_CALADRIA        = 4019, "1 Caladria",                                StartingArmy("Caladria",          1)
+    STARTING_ARMY_SIREN           = 4039, "1 Siren",                                   StartingArmyUseful("Siren",             1)
+    STARTING_ARMY_LAMPADES        = 4025, "1 Lampades",                                StartingArmyUseful("Lampades",          1)
+    STARTING_ARMY_PHOENIX         = 4026, "1 Phoenix",                                 StartingArmyUseful("Phoenix",           1)
+    STARTING_ARMY_COLOSSUS        = 4027, "1 Colossus",                                StartingArmyUseful("Colossus",          1)
 
-    # Special: spawns exactly 1 Reginleif (not REINFORCEMENT_AMOUNT)
-    REGINLEIF_JOINS               = 4028, "Reginleif Joins the Campaign",              ReinforcementUseful("Reginleif", 1)
-    ODYSSEUS_JOINS                = 5015, "Odysseus Joins the Campaign",               ReinforcementUseful("OdysseusSPC", 1)
-    KASTOR_JOINS                  = 4035, "Kastor Joins the Campaign",                 ReinforcementUseful("Kastor", 1)
-    AJAX_AMANRA_DREAMS            = 4036, "Ajax and Amanra join you for A Place in My Dreams", ReinforcementUseful("AjaxSPC", 1)
+    # Special: spawns exactly 1 Reginleif (not STARTING_ARMY_AMOUNT)
+    REGINLEIF_JOINS               = 4028, "Reginleif Joins the Campaign",              StartingArmyUseful("Reginleif", 1)
+    ODYSSEUS_JOINS                = 5015, "Odysseus Joins the Campaign",               StartingArmyUseful("OdysseusSPC", 1)
+    KASTOR_JOINS                  = 4035, "Kastor Joins the Campaign",                 StartingArmyUseful("Kastor", 1)
+    AJAX_AMANRA_DREAMS            = 4036, "Ajax and Amanra join you for A Place in My Dreams", StartingArmyUseful("AjaxSPC", 1)
+    # Chiron-survives item: spawns ChironSPC at scenario start in FotT 29/30/31/32.
+    CHIRON_DIDNT_DIE              = 4053, "Chiron didn't die",                         StartingArmyUseful("ChironSPC", 1)
 
     # Myth unit tier unlocks — forbidden at start, unlocked by item
     GREEK_CLASSICAL_MYTH_UNITS               = 5016, "Can train Greek Classical Myth Units", MythUnitUnlockProgression(['Centaur', 'Minotaur', 'Cyclops', 'LykaonVillager'], "Greek", "Classical")
@@ -948,32 +1016,42 @@ class aomItemData(enum.IntEnum):
     STARTING_DOCK_TECH      = 5102, "Starting Dock Tech",       StartingDockTech()
     STARTING_BUILDINGS_TECH = 5103, "Starting Buildings Tech",  StartingBuildingsTech()
 
+    # Progressive Wonder Item — useful, stackable; up to 6 copies in pool.
+    # Each one collected unlocks the next tier of wonder perks.  See
+    # `aom.items.Items.ProgressiveWonder` for tier semantics and
+    # `triggers/archipelago.xs::APApplyProgressiveWonder` for runtime effects.
+    PROGRESSIVE_WONDER       = 5104, "Progressive Wonder Item",   ProgressiveWonder()
+
     # -----------------------------------------------------------------------
-    # Reinforcements — Additional Filler
+    # StartingArmys — Additional Filler
     # Added to cover pool shortfall when hero abilities or age unlocks are
     # removed from the pool via player options.
     # -----------------------------------------------------------------------
-    REINFORCEMENT_RELIC_MONKEY    = 4029, f"{REINFORCEMENT_AMOUNT} Relic Monkeys",     Reinforcement("RelicMonkey",    REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_PEGASUS         = 4030, f"{REINFORCEMENT_AMOUNT} Pegasi",            Reinforcement("Pegasus",        REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_HYENA           = 4031, f"{REINFORCEMENT_AMOUNT} Hyenas of Set",     Reinforcement("Hyena",          REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_HIPPO           = 4032, f"{REINFORCEMENT_AMOUNT} Hippos of Set",     Reinforcement("Hippopotamus",   REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_GOLDEN_LION     = 4033, f"{REINFORCEMENT_AMOUNT} Golden Lions",      Reinforcement("GoldenLion",     REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_NORSE_GATHERER  = 4034, f"{REINFORCEMENT_AMOUNT} Norse Gatherers",   Reinforcement("VillagerNorse",  REINFORCEMENT_AMOUNT)
-    # Chinese reinforcements
-    REINFORCEMENT_DAO_SWORDSMAN   = 4040, f"{REINFORCEMENT_AMOUNT} Dao Swordsmen",     Reinforcement("DaoSwordsman",    REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_QILIN           = 4041, "1 QiLin",                                   Reinforcement("QiLin",           1)
-    REINFORCEMENT_BAIHU           = 4042, "1 BaiHu",                                   Reinforcement("BaiHu",           1)
-    REINFORCEMENT_QINGLONG        = 4043, "1 QingLong",                                ReinforcementUseful("QingLong",  1)
-    # Japanese reinforcements
-    REINFORCEMENT_YUMI_ARCHER     = 4044, f"{REINFORCEMENT_AMOUNT} Yumi Archers",      Reinforcement("YumiArcher",      REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_JOROGUMO        = 4045, "1 Jorogumo",                                Reinforcement("Jorogumo",        1)
-    REINFORCEMENT_ONI             = 4046, "1 Oni",                                     Reinforcement("Oni",             1)
-    REINFORCEMENT_ASURA           = 4047, "1 Asura",                                   ReinforcementUseful("Asura",     1)
-    # Aztec reinforcements
-    REINFORCEMENT_EAGLE_WARRIOR   = 4048, f"{REINFORCEMENT_AMOUNT} Eagle Warriors",    Reinforcement("EagleWarrior",    REINFORCEMENT_AMOUNT)
-    REINFORCEMENT_CHANEQUE        = 4049, "1 Chaneque",                                Reinforcement("Chaneque",        1)
-    REINFORCEMENT_TZITZIMITL      = 4050, "1 Tzitzimitl",                              Reinforcement("Tzitzimitl",      1)
-    REINFORCEMENT_AHUIZOTL        = 4051, "1 Ahuizotl",                                ReinforcementUseful("Ahuizotl",  1)
+    STARTING_ARMY_RELIC_MONKEY    = 4029, f"{STARTING_ARMY_AMOUNT} Relic Monkeys",     StartingArmy("RelicMonkey",    STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_PEGASUS         = 4030, f"{STARTING_ARMY_AMOUNT} Pegasi",            StartingArmy("Pegasus",        STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_HYENA           = 4031, f"{STARTING_ARMY_AMOUNT} Hyenas of Set",     StartingArmy("Hyena",          STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_HIPPO           = 4032, f"{STARTING_ARMY_AMOUNT} Hippos of Set",     StartingArmy("Hippopotamus",   STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_GOLDEN_LION     = 4033, f"{STARTING_ARMY_AMOUNT} Golden Lions",      StartingArmy("GoldenLion",     STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_NORSE_GATHERER  = 4034, f"{STARTING_ARMY_AMOUNT} Norse Gatherers",   StartingArmy("VillagerNorse",  STARTING_ARMY_AMOUNT)
+    # Chinese starting army units
+    STARTING_ARMY_DAO_SWORDSMAN   = 4040, f"{STARTING_ARMY_AMOUNT} Dao Swordsmen",     StartingArmy("DaoSwordsman",    STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_QILIN           = 4041, "1 QiLin",                                   StartingArmy("QiLin",           1)
+    STARTING_ARMY_KUAFU           = 4052, f"{STARTING_ARMY_AMOUNT} Kuafu",              StartingArmy("Kuafu",           STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_BAIHU           = 4042, "1 BaiHu",                                   StartingArmy("BaiHu",           1)
+    STARTING_ARMY_QINGLONG        = 4043, "1 QingLong",                                StartingArmyUseful("QingLong",  1)
+    STARTING_ARMY_PIXIU           = 4054, "1 Pixiu",                                   StartingArmy("PiXiu",           1)
+    STARTING_ARMY_TAOTIE          = 4055, "1 Taotie",                                  StartingArmy("TaoTie",          1)
+    # Japanese starting army units
+    STARTING_ARMY_YUMI_ARCHER     = 4044, f"{STARTING_ARMY_AMOUNT} Yumi Archers",      StartingArmy("YumiArcher",      STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_JOROGUMO        = 4045, "1 Jorogumo",                                StartingArmy("Jorogumo",        1)
+    STARTING_ARMY_ONI             = 4046, "1 Oni",                                     StartingArmy("Oni",             1)
+    STARTING_ARMY_UMIBOZU         = 4047, "1 Umibozu",                                 StartingArmyUseful("Umibozu",   1)
+    # Aztec starting army units
+    STARTING_ARMY_EAGLE_WARRIOR   = 4048, f"{STARTING_ARMY_AMOUNT} Eagle Warriors",    StartingArmy("EagleWarrior",    STARTING_ARMY_AMOUNT)
+    STARTING_ARMY_CHANEQUE        = 4049, "1 Chaneque",                                StartingArmy("Chaneque",        1)
+    STARTING_ARMY_TZITZIMITL      = 4050, "1 Tzitzimitl",                              StartingArmy("Tzitzimitl",      1)
+    STARTING_ARMY_AHUIZOTL        = 4051, "1 Ahuizotl",                                StartingArmyUseful("Ahuizotl",  1)
+    STARTING_ARMY_OBSIDIAN_BUTTERFLY = 4056, "1 Obsidian Butterfly",                   StartingArmy("ObsidianButterfly", 1)
 
     # -----------------------------------------------------------------------
     # Hero Stat Boosts — IDs 2000-2599
@@ -1190,6 +1268,13 @@ class aomItemData(enum.IntEnum):
     # Generic — not civ-specific; always in pool regardless of enabled civs.
     # -----------------------------------------------------------------------
     VILLAGER_DISCOUNT = 5009, "Villagers Cost -5 Food", GenericVillagerDiscount(5)
+
+    # One-shot generic useful effects.  Applied per scenario start by
+    # APApplyAllItems in archipelago.xs; the dataclasses carry no fields and
+    # are detected purely by item id.
+    CHIRON_SWIMMING_LESSONS = 5010, "Chiron's Swimming Lessons", ChironSwimmingLessons()
+    FAVOR_ON_HUMAN_KILL     = 5011, "Killing Enemy Human Soldiers Grants Favor", FavorOnHumanKill()
+    FAVOR_ON_MYTH_KILL      = 5012, "Killing Enemy Myth Units Grants Favor",     FavorOnMythKill()
 
 
 # -----------------------------------------------------------------------

@@ -225,10 +225,20 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
     # Shop region — only create it when the Gem Shop option is enabled.
     if bool(multiworld.worlds[player].options.gem_shop.value):
         from ..locations.Locations import (ALL_SHOP_ITEM_IDS as _SHOP_IDS,
-            ALL_PROGRESSIVE_INFO_IDS as _INFO_IDS, location_id_to_name as _lid2name)
+            ALL_PROGRESSIVE_INFO_IDS as _INFO_IDS,
+            SHOP_E_LOCATION_IDS as _SHOP_E_IDS,
+            location_id_to_name as _lid2name)
         from BaseClasses import Location as _ShopLoc
         shop_region = create_region(multiworld, player, "Shop")
-        for _loc_id in _SHOP_IDS + _INFO_IDS:
+        _shop_locs = list(_SHOP_IDS) + list(_INFO_IDS)
+        # Shop E locations only registered when the budget gate passed in
+        # generate_early.  Only the active subset (per_deck_depth × 4) is
+        # added — the rest of the reserved Shop E id block stays unused.
+        _world = multiworld.worlds[player]
+        if getattr(_world, "shop_e_enabled", False):
+            _active_e = getattr(_world, "shop_e_active_ids", set()) or set(_SHOP_E_IDS)
+            _shop_locs += [lid for lid in _SHOP_E_IDS if lid in _active_e]
+        for _loc_id in _shop_locs:
             _name = _lid2name.get(_loc_id)
             if _name:
                 _loc = _ShopLoc(player, _name, _loc_id, shop_region)

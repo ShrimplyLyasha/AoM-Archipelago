@@ -36,7 +36,7 @@ Archipelago is a free, open-source multiworld randomizer platform that connects 
 - Unit unlock items for each civ (Hoplite, Berserk, Spearman, and more)
 - Section unlock items (Greek Scenarios, Egyptian Scenarios, Norse Scenarios, Atlantis Key)
 - Resources
-- Reinforcement units that spawn in your base each scenario
+- Starting Army units that spawn in your base each scenario
 - Stronger Relic items
 - Hero stat boosts for major heroes
 

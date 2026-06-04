@@ -57,7 +57,7 @@
 //                           dispatch hooks in APApplyAgeUnlocks /
 //                           APSetPlayerCiv.
 //   * NEW ITEM EFFECT     : Add a branch in APApplyItems where it switches
-//                           on the item id (search for cTRAP_*, cREINFORCEMENT_*,
+//                           on the item id (search for cTRAP_*, cSTARTING_ARMY_*,
 //                           etc. for examples).  Define handler functions
 //                           above the rule.
 //   * NEW TRAP            : 1) Add cAPTrap<Name> const matching the Python
@@ -177,6 +177,21 @@ vector       gAPTrapPos         = vector(0, 0, 0);
 extern int gAPScenarioId  = 0;
 extern int gAPCampaignId  = 0;
 
+// Progressive Wonder tier (0-6). Counts copies of cPROGRESSIVE_WONDER received.
+// Tier 0: wonders forbidden until tier 1 reached.
+// Tier 1: wonders buildable once player advances to Mythic Age.
+// Tier 2: tier 1 + 20% cost off.
+// Tier 3: tier 2 + 35% build speed (RelicTreasureOfTlacopan-style).
+// Tier 4: tier 3 + wonders placeable anywhere (PlaceAnywhere flag).
+// Tier 5: tier 4 + wonders buildable in any age (unforbid + enable WonderAge*).
+// Tier 6: tier 5 + 40% total cost off (extra 20% on top of tier 2).
+extern int gAPWonderTier  = 0;
+
+// True when the player holds the Unlock Titan Age item matching the civ they
+// are currently playing.  While false, APEnforceTitanLock keeps the
+// SecretsOfTheTitans tech disabled so no Titan can be summoned.
+extern bool gAPHasTitanForCiv = false;
+
 include "aom_state.xs";
 
 // -----------------------------------------------------------------------
@@ -224,38 +239,49 @@ const int cRELIC_EFFECT_FAVOR_COST       = 36;
 const int cRELIC_EFFECT_FOOD_COST        = 37;
 const int cRELIC_EFFECT_BUILD_SPEED      = 38;
 
-// Reinforcement item IDs â€” filler
-const int cREINFORCEMENT_ANUBITES        = 4000;
-const int cREINFORCEMENT_HOPLITE         = 4001;
-const int cREINFORCEMENT_DWARF           = 4002;
-const int cREINFORCEMENT_MERCENARY       = 4003;
-const int cREINFORCEMENT_MERCENARY_CAV   = 4004;
-const int cREINFORCEMENT_AUTOMATON       = 4006;
-const int cREINFORCEMENT_WADJET          = 4007;
-const int cREINFORCEMENT_BERSERK         = 4008;
-const int cREINFORCEMENT_SLINGER         = 4009;
-const int cREINFORCEMENT_TURMA           = 4010;
-const int cREINFORCEMENT_KATASKOPOS      = 4011;
-// Reinforcement item IDs â€” useful
-const int cREINFORCEMENT_FIRE_GIANT      = 4012;
-const int cREINFORCEMENT_VILLAGER        = 4013;
-const int cREINFORCEMENT_CITIZEN         = 4014;
-const int cREINFORCEMENT_BATTLE_BOAR     = 4015;
-const int cREINFORCEMENT_ROC             = 4017;
-const int cREINFORCEMENT_PRIEST          = 4018;
-const int cREINFORCEMENT_CALADRIA        = 4019;
-const int cREINFORCEMENT_RAIDING_CAVALRY = 4020;
-const int cREINFORCEMENT_ORACLE          = 4021;
-const int cREINFORCEMENT_CYCLOPS         = 4022;
-const int cREINFORCEMENT_TROLL           = 4023;
-const int cREINFORCEMENT_BEHEMOTH        = 4024;
-const int cREINFORCEMENT_LAMPADES        = 4025;
-const int cREINFORCEMENT_PHOENIX         = 4026;
-const int cREINFORCEMENT_COLOSSUS        = 4027;
+// Starting Army item IDs â€” filler
+const int cSTARTING_ARMY_ANUBITES        = 4000;
+const int cSTARTING_ARMY_HOPLITE         = 4001;
+const int cSTARTING_ARMY_DWARF           = 4002;
+const int cSTARTING_ARMY_MERCENARY       = 4003;
+const int cSTARTING_ARMY_MERCENARY_CAV   = 4004;
+const int cSTARTING_ARMY_AUTOMATON       = 4006;
+const int cSTARTING_ARMY_WADJET          = 4007;
+const int cSTARTING_ARMY_BERSERK         = 4008;
+const int cSTARTING_ARMY_SLINGER         = 4009;
+const int cSTARTING_ARMY_TURMA           = 4010;
+const int cSTARTING_ARMY_KATASKOPOS      = 4011;
+// Starting Army item IDs â€” useful
+const int cSTARTING_ARMY_FIRE_GIANT      = 4012;
+const int cSTARTING_ARMY_VILLAGER        = 4013;
+const int cSTARTING_ARMY_CITIZEN         = 4014;
+const int cSTARTING_ARMY_BATTLE_BOAR     = 4015;
+const int cSTARTING_ARMY_ROC             = 4017;
+const int cSTARTING_ARMY_PRIEST          = 4018;
+const int cSTARTING_ARMY_CALADRIA        = 4019;
+const int cSTARTING_ARMY_RAIDING_CAVALRY = 4020;
+const int cSTARTING_ARMY_ORACLE          = 4021;
+const int cSTARTING_ARMY_CYCLOPS         = 4022;
+const int cSTARTING_ARMY_TROLL           = 4023;
+const int cSTARTING_ARMY_BEHEMOTH        = 4024;
+const int cSTARTING_ARMY_LAMPADES        = 4025;
+const int cSTARTING_ARMY_PHOENIX         = 4026;
+const int cSTARTING_ARMY_COLOSSUS        = 4027;
 const int cREGINLEIF_JOINS               = 4028;
 const int cODYSSEUS_JOINS                = 5015;
 const int cKASTOR_JOINS                  = 4035;
 const int cAJAX_AMANRA_DREAMS           = 4036;
+const int cCHIRON_DIDNT_DIE             = 4053;
+const int cPROGRESSIVE_WONDER           = 5104;
+
+// Per-civ Unlock Titan Age items (Items.py IDs 1100-1106).
+const int cGREEK_TITAN_UNLOCK           = 1100;
+const int cEGYPTIAN_TITAN_UNLOCK        = 1101;
+const int cNORSE_TITAN_UNLOCK           = 1102;
+const int cATLANTEAN_TITAN_UNLOCK       = 1103;
+const int cCHINESE_TITAN_UNLOCK         = 1104;
+const int cJAPANESE_TITAN_UNLOCK        = 1105;
+const int cAZTEC_TITAN_UNLOCK           = 1106;
 
 // Kastor stat items
 const int cKASTOR_HP_25             = 3400;
@@ -269,29 +295,30 @@ const int cKASTOR_REGEN_5           = 3409;
 const int cKASTOR_UNDERMINE_ATTACKS = 3300;
 const int cKASTOR_SUMMON_SOLDIERS   = 3301;
 const int cKASTOR_IS_A_MANOR        = 3302;
-const int cREINFORCEMENT_RELIC_MONKEY    = 4029;
-const int cREINFORCEMENT_PEGASUS         = 4030;
-const int cREINFORCEMENT_HYENA           = 4031;
-const int cREINFORCEMENT_HIPPO           = 4032;
-const int cREINFORCEMENT_GOLDEN_LION     = 4033;
-const int cREINFORCEMENT_NORSE_GATHERER  = 4034;
-const int cREINFORCEMENT_HAMADRYAD       = 4037;
-const int cREINFORCEMENT_DRAUGR          = 4038;
-const int cREINFORCEMENT_SIREN           = 4039;
-// Chinese / Japanese / Aztec reinforcements (one Classical + one Heroic +
+const int cSTARTING_ARMY_RELIC_MONKEY    = 4029;
+const int cSTARTING_ARMY_PEGASUS         = 4030;
+const int cSTARTING_ARMY_HYENA           = 4031;
+const int cSTARTING_ARMY_HIPPO           = 4032;
+const int cSTARTING_ARMY_GOLDEN_LION     = 4033;
+const int cSTARTING_ARMY_NORSE_GATHERER  = 4034;
+const int cSTARTING_ARMY_HAMADRYAD       = 4037;
+const int cSTARTING_ARMY_DRAUGR          = 4038;
+const int cSTARTING_ARMY_SIREN           = 4039;
+// Chinese / Japanese / Aztec starting army items (one Classical + one Heroic +
 // one Mythic myth per civ plus one human-soldier batch per civ).
-const int cREINFORCEMENT_DAO_SWORDSMAN   = 4040;
-const int cREINFORCEMENT_QILIN           = 4041;
-const int cREINFORCEMENT_BAIHU           = 4042;
-const int cREINFORCEMENT_QINGLONG        = 4043;
-const int cREINFORCEMENT_YUMI_ARCHER     = 4044;
-const int cREINFORCEMENT_JOROGUMO        = 4045;
-const int cREINFORCEMENT_ONI             = 4046;
-const int cREINFORCEMENT_ASURA           = 4047;
-const int cREINFORCEMENT_EAGLE_WARRIOR   = 4048;
-const int cREINFORCEMENT_CHANEQUE        = 4049;
-const int cREINFORCEMENT_TZITZIMITL      = 4050;
-const int cREINFORCEMENT_AHUIZOTL        = 4051;
+const int cSTARTING_ARMY_DAO_SWORDSMAN   = 4040;
+const int cSTARTING_ARMY_QILIN           = 4041;
+const int cSTARTING_ARMY_BAIHU           = 4042;
+const int cSTARTING_ARMY_QINGLONG        = 4043;
+const int cSTARTING_ARMY_YUMI_ARCHER     = 4044;
+const int cSTARTING_ARMY_JOROGUMO        = 4045;
+const int cSTARTING_ARMY_ONI             = 4046;
+const int cSTARTING_ARMY_UMIBOZU         = 4047;
+const int cSTARTING_ARMY_EAGLE_WARRIOR   = 4048;
+const int cSTARTING_ARMY_CHANEQUE        = 4049;
+const int cSTARTING_ARMY_TZITZIMITL      = 4050;
+const int cSTARTING_ARMY_AHUIZOTL        = 4051;
+const int cSTARTING_ARMY_KUAFU           = 4052;
 
 // cXSPUResourceEffectCost=0, cXSPUResourceEffectCarryCapacity=1
 const int cGREEK_CARRY_FOOD              = 5000;
@@ -304,6 +331,9 @@ const int cNORSE_CARRY_FOOD              = 5006;
 const int cNORSE_CARRY_WOOD              = 5007;
 const int cNORSE_CARRY_GOLD              = 5008;
 const int cVILLAGER_DISCOUNT             = 5009;  // generic: -5 food cost for all villager types
+const int cCHIRON_SWIMMING_LESSONS       = 5010;  // Chiron gains Amphibious movement
+const int cFAVOR_ON_HUMAN_KILL           = 5011;  // killing enemy HumanSoldier units grants favor
+const int cFAVOR_ON_MYTH_KILL            = 5012;  // killing enemy MythUnit units grants favor
 const int cCHINESE_CARRY_FOOD            = 5010;
 const int cCHINESE_CARRY_WOOD            = 5011;
 const int cCHINESE_CARRY_GOLD            = 5012;
@@ -537,25 +567,28 @@ const int cODYSSEUS_SWIFT_ESCAPE     = 3001;
 const int cREGINLEIF_FROST_STRIKE    = 3100;
 const int cREGINLEIF_PROJECTILE    = 2510;
 
-// Reinforcement spawn unit ID â€” set per-scenario via trQuestVarSet("ReinforcementSpawnID", <unit_id>)
+// Starting Army spawn unit ID â€” set per-scenario via trQuestVarSet("ReinforcementSpawnID", <unit_id>).
+// The QV name remains "ReinforcementSpawnID" for backward compatibility with
+// existing scenario editor (.mythscn) files; do not rename the literal string.
 
 // -----------------------------------------------------------------------
 // Arkantos unit ID â€” resolved dynamically so it works across all scenarios
 // -----------------------------------------------------------------------
 
-int gReinforcementSpawnID = -1;
+int gStartingArmySpawnID = -1;
 
-// APFindReinforcementSpawn â€” caches the unit id that reinforcement items
+// APFindStartingArmySpawn â€” caches the unit id that starting army items
 // spawn next to.  Each scenario's editor must set the QV `ReinforcementSpawnID`
+// (legacy name; kept for editor compatibility)
 // to a unit on the map (typically Arkantos / Kastor / the player's main
-// hero) so reinforcement items spawn nearby.  Called once from
+// hero) so starting army items spawn nearby.  Called once from
 // APActivateScenario.
-void APFindReinforcementSpawn()
+void APFindStartingArmySpawn()
 {
     // Arkantos ID is set per-scenario via a game-start trigger:
     //   trQuestVarSet("ReinforcementSpawnID", <unit_id>);
     // Look up Arkantos's unit ID in the editor by clicking on him.
-    gReinforcementSpawnID = trQuestVarGet("ReinforcementSpawnID");
+    gStartingArmySpawnID = trQuestVarGet("ReinforcementSpawnID");
 }
 
 // -----------------------------------------------------------------------
@@ -2657,6 +2690,93 @@ runImmediately
     xsDisableSelf();
 }
 
+// -----------------------------------------------------------------------
+// APApplyProgressiveWonder â€” called once per scenario from APApplyItems with
+// the current `gAPWonderTier` value.  Applies the cumulative tier-2..6 perks
+// (cost reduction, build speed, build-anywhere).  Tier-1 + tier-5 unforbid
+// logic lives in APEnforceWonderLock; this function only does the
+// stat-modifier / flag changes that don't need to be re-asserted every tick.
+// Defined before APActivateScenarioStage2 because XS requires functions to
+// be declared before their first call site.
+// -----------------------------------------------------------------------
+void APApplyProgressiveWonder()
+{
+    if (gAPWonderTier <= 0) { return; }
+
+    // Cost discount (tiers 2-6).  Uses the percent-cost modifier (relativity 2),
+    // which assigns the cost to a fraction of base rather than a flat subtract,
+    // so it works for every civ's wonder regardless of base price.
+    //   tier 2-5 -> 0.8  (20% off)
+    //   tier 6   -> 0.6  (40% off, an extra 20% on top of tier 2)
+    if (gAPWonderTier >= 2)
+    {
+        float costMult = 0.8;
+        if (gAPWonderTier >= 6) { costMult = 0.6; }
+        trModifyProtounitResource("Wonder", "Food", 1, 0, costMult, 2);
+        trModifyProtounitResource("Wonder", "Wood", 1, 0, costMult, 2);
+        trModifyProtounitResource("Wonder", "Gold", 1, 0, costMult, 2);
+    }
+
+    // Tier 3: 35% faster build â€” activate RelicTreasureOfTlacopan, which
+    // applies a 0.65 BuildPoints percent modifier to Wonder.
+    if (gAPWonderTier >= 3)
+    {
+        int relic = kbTechGetID("RelicTreasureOfTlacopan");
+        if (relic > 0) { trTechSetStatus(1, relic, 2); }   // 2 = active
+    }
+
+    // Tier 4: PlaceAnywhere flag â€” bypasses terrain / build-zone restrictions.
+    if (gAPWonderTier >= 4)
+    {
+        trProtoUnitSetFlag(1, "Wonder", "PlaceAnywhere", true);
+    }
+
+    // Tier 5: any-age unforbid handled by APEnforceWonderLock (no-op here).
+
+    // Tier 6: extra cost discount folded into the cost block above (no-op here).
+}
+
+// -----------------------------------------------------------------------
+// APComputeTitanUnlock â€” sets gAPHasTitanForCiv by matching the player's
+// current civ (from gAPMajorGod) against the per-civ Unlock Titan Age items
+// in gAPItems[].  Called once per scenario from APApplyItems, before the
+// APEnforceTitanLock watcher is enabled.  Defined before
+// APActivateScenarioStage2 because XS requires functions to be declared
+// before their first call site.
+// -----------------------------------------------------------------------
+void APComputeTitanUnlock()
+{
+    gAPHasTitanForCiv = false;
+
+    bool isGreek     = (gAPMajorGod == cAPMajorZeus || gAPMajorGod == cAPMajorPoseidon || gAPMajorGod == cAPMajorHades || gAPMajorGod == cAPMajorDemeter);
+    bool isEgyptian  = (gAPMajorGod == cAPMajorIsis || gAPMajorGod == cAPMajorRa       || gAPMajorGod == cAPMajorSet);
+    bool isNorse     = (gAPMajorGod == cAPMajorOdin || gAPMajorGod == cAPMajorThor     || gAPMajorGod == cAPMajorLoki || gAPMajorGod == cAPMajorFreyr);
+    bool isAtlantean = (gAPMajorGod == cAPMajorKronos || gAPMajorGod == cAPMajorOranos || gAPMajorGod == cAPMajorGaia);
+    bool isChinese   = (gAPMajorGod == cAPMajorNuwa   || gAPMajorGod == cAPMajorFuxi   || gAPMajorGod == cAPMajorShennong);
+    bool isJapanese  = (gAPMajorGod == cAPMajorAmaterasu || gAPMajorGod == cAPMajorTsukuyomi || gAPMajorGod == cAPMajorSusanoo);
+    bool isAztec     = (gAPMajorGod == cAPMajorHuitzilopochtli || gAPMajorGod == cAPMajorTezcatlipoca || gAPMajorGod == cAPMajorQuetzalcoatl);
+
+    int wantId = -1;
+    if (isGreek     == true) { wantId = cGREEK_TITAN_UNLOCK; }
+    if (isEgyptian  == true) { wantId = cEGYPTIAN_TITAN_UNLOCK; }
+    if (isNorse     == true) { wantId = cNORSE_TITAN_UNLOCK; }
+    if (isAtlantean == true) { wantId = cATLANTEAN_TITAN_UNLOCK; }
+    if (isChinese   == true) { wantId = cCHINESE_TITAN_UNLOCK; }
+    if (isJapanese  == true) { wantId = cJAPANESE_TITAN_UNLOCK; }
+    if (isAztec     == true) { wantId = cAZTEC_TITAN_UNLOCK; }
+    if (wantId < 0) { return; }
+
+    int i = 0;
+    for (i = 9; i < gAPItemCount; i++)
+    {
+        if (gAPItems[i] == wantId)
+        {
+            gAPHasTitanForCiv = true;
+            return;
+        }
+    }
+}
+
 // APActivateScenarioStage2 â€” everything in APActivateScenario after
 // APSetPlayerCiv.  Lives in its own rule so the DLC two-stage civ swap can
 // defer it until after the Nature -> DLC trPlayerSetCiv settles.
@@ -3023,6 +3143,15 @@ runImmediately
     gAPRelicEffAppliedBuildSpeed = 0;
     gAPRelicLastCount            = -1;
     xsEnableRule("APRelicTrickleEnforce");
+    // Apply per-tier wonder effects (cost / build-speed / anywhere) and turn
+    // on the loop that re-asserts the lock until the player earns it.
+    APApplyProgressiveWonder();
+    xsEnableRule("APEnforceWonderLock");
+    // Titan Age gate: compute whether the player holds the Titan unlock for
+    // their civ, then turn on the watcher that suppresses SecretsOfTheTitans
+    // until they do.
+    APComputeTitanUnlock();
+    xsEnableRule("APEnforceTitanLock");
     // Initialize trap queue from aom_state.xs generated state
     // Transform buildings to match random god's civilization (if enabled)
     APLoadBuildingTransforms();
@@ -4111,7 +4240,7 @@ void APApplyHeroBoosts()
 // Reads gAPItems[] and applies every received item to the running player:
 //   * Section/global flags from indices 0-8 â†’ gHasGreek / gHasNewAtlantis / ...
 //   * Lock check (APCheckCampaignLock) â€” bail if scenario's section isn't unlocked.
-//   * God announce, reinforcement spawn lookup.
+//   * God announce, starting army spawn lookup.
 //   * APApplyAgeUnlocks â€” civ + age tech setup.
 //   * APApplyHeroBoosts â€” stat / special / action items.
 //   * Resource & passive-income items, villager carry / discount items.
@@ -4168,7 +4297,7 @@ runImmediately
     APInitScenarioKeys();
     APCheckCampaignLock();
     APAnnounceGod();
-    APFindReinforcementSpawn();
+    APFindStartingArmySpawn();
     APApplyAgeUnlocks();
     APApplyHeroBoosts();
 
@@ -4186,14 +4315,25 @@ runImmediately
     int aztCarryFood = 0; int aztCarryWood = 0; int aztCarryGold = 0;
     // Generic villager food cost reduction counter
     int villagerDiscount = 0;
+    // Generic useful one-shot effect counters
+    int chironSwimmingLessons = 0;
+    int favorOnHumanKill      = 0;
+    int favorOnMythKill       = 0;
 
     int itemId = 0;
     int i = 0;
     int j = 0;
+    // Reset Progressive Wonder tier; recounted from gAPItems below.  Capped at 6.
+    gAPWonderTier = 0;
     // Start at 6 â€” indices 0-5 are flags (campaign unlocks, campaign ID, godsanity)
     for (i = 9; i < gAPItemCount; i++)
     {
         itemId = gAPItems[i];
+
+        if (itemId == cPROGRESSIVE_WONDER && gAPWonderTier < 6)
+        {
+            gAPWonderTier = gAPWonderTier + 1;
+        }
 
         if (itemId == cSTARTING_WOOD_SMALL)    { wood  += 30;  }
         if (itemId == cSTARTING_FOOD_SMALL)    { food  += 30;  }
@@ -4217,197 +4357,201 @@ runImmediately
         if (itemId == cPASSIVE_GOLD_LARGE)    { trPlayerModifyResourceData(1, 2, 0, 2.0,  0); }
         if (itemId == cPASSIVE_FAVOR_LARGE)   { trPlayerModifyResourceData(1, 2, 3, 1.0,  0); }
 
-        if (itemId == cREINFORCEMENT_ANUBITES)
+        if (itemId == cSTARTING_ARMY_ANUBITES)
         {
-            trUnitCreateFromSource("Anubite", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Anubite", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_HOPLITE)
-        {
-            for (j = 0; j < 2; j++)
-            {
-                trUnitCreateFromSource("Hoplite", gReinforcementSpawnID, gReinforcementSpawnID, 1);
-            }
-        }
-        if (itemId == cREINFORCEMENT_DWARF)
+        if (itemId == cSTARTING_ARMY_HOPLITE)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("VillagerDwarf", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Hoplite", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_MERCENARY)
+        if (itemId == cSTARTING_ARMY_DWARF)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Mercenary", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("VillagerDwarf", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_MERCENARY_CAV)
+        if (itemId == cSTARTING_ARMY_MERCENARY)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("MercenaryCavalry", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Mercenary", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_AUTOMATON)
+        if (itemId == cSTARTING_ARMY_MERCENARY_CAV)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Automaton", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("MercenaryCavalry", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_WADJET)
-        {
-            trUnitCreateFromSource("Wadjet", gReinforcementSpawnID, gReinforcementSpawnID, 1);
-        }
-        if (itemId == cREINFORCEMENT_BERSERK)
+        if (itemId == cSTARTING_ARMY_AUTOMATON)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Berserk", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Automaton", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_SLINGER)
+        if (itemId == cSTARTING_ARMY_WADJET)
+        {
+            trUnitCreateFromSource("Wadjet", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+        }
+        if (itemId == cSTARTING_ARMY_BERSERK)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Slinger", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Berserk", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_TURMA)
+        if (itemId == cSTARTING_ARMY_SLINGER)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Turma", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Slinger", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_KATASKOPOS)
+        if (itemId == cSTARTING_ARMY_TURMA)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Kataskopos", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Turma", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_FIRE_GIANT)
-        {
-            trUnitCreateFromSource("FireGiant", gReinforcementSpawnID, gReinforcementSpawnID, 1);
-        }
-        if (itemId == cREINFORCEMENT_VILLAGER)
+        if (itemId == cSTARTING_ARMY_KATASKOPOS)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("VillagerGreek", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Kataskopos", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_CITIZEN)
+        if (itemId == cSTARTING_ARMY_FIRE_GIANT)
+        {
+            trUnitCreateFromSource("FireGiant", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+        }
+        if (itemId == cSTARTING_ARMY_VILLAGER)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("VillagerAtlantean", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("VillagerGreek", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_BATTLE_BOAR)
+        if (itemId == cSTARTING_ARMY_CITIZEN)
         {
-            trUnitCreateFromSource("BattleBoar", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            for (j = 0; j < 2; j++)
+            {
+                trUnitCreateFromSource("VillagerAtlantean", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+            }
         }
-        if (itemId == cREINFORCEMENT_ROC)
+        if (itemId == cSTARTING_ARMY_BATTLE_BOAR)
+        {
+            trUnitCreateFromSource("BattleBoar", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+        }
+        if (itemId == cSTARTING_ARMY_ROC)
         {
             if (gAPScenarioId != 12)
             {
-                trUnitCreateFromSource("Roc", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Roc", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_PRIEST)
+        if (itemId == cSTARTING_ARMY_PRIEST)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Priest", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Priest", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_CALADRIA)
+        if (itemId == cSTARTING_ARMY_CALADRIA)
         {
-            trUnitCreateFromSource("Caladria", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Caladria", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_RAIDING_CAVALRY)
+        if (itemId == cSTARTING_ARMY_RAIDING_CAVALRY)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("RaidingCavalry", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("RaidingCavalry", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_ORACLE)
+        if (itemId == cSTARTING_ARMY_ORACLE)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Oracle", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Oracle", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_CYCLOPS)
+        if (itemId == cSTARTING_ARMY_CYCLOPS)
         {
-            trUnitCreateFromSource("Cyclops", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Cyclops", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_TROLL)
+        if (itemId == cSTARTING_ARMY_TROLL)
         {
-            trUnitCreateFromSource("Troll", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Troll", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_BEHEMOTH)
+        if (itemId == cSTARTING_ARMY_BEHEMOTH)
         {
-            trUnitCreateFromSource("Behemoth", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Behemoth", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_HAMADRYAD)
+        if (itemId == cSTARTING_ARMY_HAMADRYAD)
         {
-            trUnitCreateFromSource("Hamadryad", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Hamadryad", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_DRAUGR)
+        if (itemId == cSTARTING_ARMY_DRAUGR)
         {
-            trUnitCreateFromSource("Draugr", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Draugr", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_SIREN)
+        if (itemId == cSTARTING_ARMY_SIREN)
         {
-            trUnitCreateFromSource("Siren", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Siren", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_LAMPADES)
+        if (itemId == cSTARTING_ARMY_LAMPADES)
         {
-            trUnitCreateFromSource("Lampades", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Lampades", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_PHOENIX)
+        if (itemId == cSTARTING_ARMY_PHOENIX)
         {
-            trUnitCreateFromSource("Phoenix", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Phoenix", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
-        if (itemId == cREINFORCEMENT_COLOSSUS)
+        if (itemId == cSTARTING_ARMY_COLOSSUS)
         {
-            trUnitCreateFromSource("Colossus", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+            trUnitCreateFromSource("Colossus", gStartingArmySpawnID, gStartingArmySpawnID, 1);
         }
         // ---- Chinese ----
-        if (itemId == cREINFORCEMENT_DAO_SWORDSMAN)
+        if (itemId == cSTARTING_ARMY_DAO_SWORDSMAN)
         {
-            for (j = 0; j < 2; j++) { trUnitCreateFromSource("DaoSwordsman", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+            for (j = 0; j < 2; j++) { trUnitCreateFromSource("DaoSwordsman", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
         }
-        if (itemId == cREINFORCEMENT_QILIN)    { trUnitCreateFromSource("QiLin",    gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_BAIHU)    { trUnitCreateFromSource("BaiHu",    gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_QINGLONG) { trUnitCreateFromSource("QingLong", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_QILIN)    { trUnitCreateFromSource("QiLin",    gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_BAIHU)    { trUnitCreateFromSource("BaiHu",    gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_QINGLONG) { trUnitCreateFromSource("QingLong", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_KUAFU)
+        {
+            for (j = 0; j < 2; j++) { trUnitCreateFromSource("Kuafu", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        }
         // ---- Japanese ----
-        if (itemId == cREINFORCEMENT_YUMI_ARCHER)
+        if (itemId == cSTARTING_ARMY_YUMI_ARCHER)
         {
-            for (j = 0; j < 2; j++) { trUnitCreateFromSource("YumiArcher", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+            for (j = 0; j < 2; j++) { trUnitCreateFromSource("YumiArcher", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
         }
-        if (itemId == cREINFORCEMENT_JOROGUMO) { trUnitCreateFromSource("Jorogumo", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_ONI)      { trUnitCreateFromSource("Oni",      gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_ASURA)    { trUnitCreateFromSource("Asura",    gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_JOROGUMO) { trUnitCreateFromSource("Jorogumo", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_ONI)      { trUnitCreateFromSource("Oni",      gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_UMIBOZU)  { trUnitCreateFromSource("Umibozu",  gStartingArmySpawnID, gStartingArmySpawnID, 1); }
         // ---- Aztec ----
-        if (itemId == cREINFORCEMENT_EAGLE_WARRIOR)
+        if (itemId == cSTARTING_ARMY_EAGLE_WARRIOR)
         {
-            for (j = 0; j < 2; j++) { trUnitCreateFromSource("EagleWarrior", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+            for (j = 0; j < 2; j++) { trUnitCreateFromSource("EagleWarrior", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
         }
-        if (itemId == cREINFORCEMENT_CHANEQUE)   { trUnitCreateFromSource("Chaneque",   gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_TZITZIMITL) { trUnitCreateFromSource("Tzitzimitl", gReinforcementSpawnID, gReinforcementSpawnID, 1); }
-        if (itemId == cREINFORCEMENT_AHUIZOTL)   { trUnitCreateFromSource("Ahuizotl",   gReinforcementSpawnID, gReinforcementSpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_CHANEQUE)   { trUnitCreateFromSource("Chaneque",   gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_TZITZIMITL) { trUnitCreateFromSource("Tzitzimitl", gStartingArmySpawnID, gStartingArmySpawnID, 1); }
+        if (itemId == cSTARTING_ARMY_AHUIZOTL)   { trUnitCreateFromSource("Ahuizotl",   gStartingArmySpawnID, gStartingArmySpawnID, 1); }
         if (itemId == cREGINLEIF_JOINS)
         {
             // Reginleif joins naturally on scenarios 26-30; skip spawn there
             if (gAPScenarioId < 26 || gAPScenarioId > 30)
             {
-                trUnitCreateFromSource("Reginleif", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Reginleif", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
         if (itemId == cODYSSEUS_JOINS)
@@ -4415,7 +4559,7 @@ runImmediately
             // Odysseus joins naturally on scenarios 4, 5, 6, 30; skip spawn there
             if (gAPScenarioId != 4 && gAPScenarioId != 5 && gAPScenarioId != 6 && gAPScenarioId != 30)
             {
-                trUnitCreateFromSource("OdysseusSPC", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("OdysseusSPC", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
         if (itemId == cKASTOR_JOINS)
@@ -4427,7 +4571,7 @@ runImmediately
                 gAPScenarioId != 508 && gAPScenarioId != 509 && gAPScenarioId != 510 &&
                 gAPScenarioId != 511 && gAPScenarioId != 512)
             {
-                trUnitCreateFromSource("Kastor", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Kastor", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
         if (itemId == cAJAX_AMANRA_DREAMS)
@@ -4436,50 +4580,61 @@ runImmediately
             // spawn them there (this item has no effect in any other scenario).
             if (gAPScenarioId == 32)
             {
-                trUnitCreateFromSource("AjaxSPC", gReinforcementSpawnID, gReinforcementSpawnID, 1);
-                trUnitCreateFromSource("Amanra", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("AjaxSPC", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+                trUnitCreateFromSource("Amanra", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_RELIC_MONKEY)
+        if (itemId == cCHIRON_DIDNT_DIE)
+        {
+            // Chiron died at the end of fott 28; this item revives him for the
+            // remaining scenarios he could plausibly appear in (29 / 30 and the
+            // Final missions 31 / 32).  No effect in any other scenario.
+            if (gAPScenarioId == 29 || gAPScenarioId == 30 ||
+                gAPScenarioId == 31 || gAPScenarioId == 32)
+            {
+                trUnitCreateFromSource("ChironSPC", gStartingArmySpawnID, gStartingArmySpawnID, 1);
+            }
+        }
+        if (itemId == cSTARTING_ARMY_RELIC_MONKEY)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("RelicMonkey", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("RelicMonkey", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_PEGASUS)
+        if (itemId == cSTARTING_ARMY_PEGASUS)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("Pegasus", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("Pegasus", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_HYENA)
+        if (itemId == cSTARTING_ARMY_HYENA)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("HyenaOfSet", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("HyenaOfSet", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_HIPPO)
+        if (itemId == cSTARTING_ARMY_HIPPO)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("HippopotamusOfSet", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("HippopotamusOfSet", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_GOLDEN_LION)
+        if (itemId == cSTARTING_ARMY_GOLDEN_LION)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("RelicGoldenLion", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("RelicGoldenLion", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
-        if (itemId == cREINFORCEMENT_NORSE_GATHERER)
+        if (itemId == cSTARTING_ARMY_NORSE_GATHERER)
         {
             for (j = 0; j < 2; j++)
             {
-                trUnitCreateFromSource("VillagerNorse", gReinforcementSpawnID, gReinforcementSpawnID, 1);
+                trUnitCreateFromSource("VillagerNorse", gStartingArmySpawnID, gStartingArmySpawnID, 1);
             }
         }
 
@@ -4505,6 +4660,10 @@ runImmediately
         if (itemId == cAZTEC_CARRY_GOLD)    { aztCarryGold++; }
         // Generic villager food cost discount (all villager types)
         if (itemId == cVILLAGER_DISCOUNT) { villagerDiscount++; }
+        // Generic useful one-shot effects
+        if (itemId == cCHIRON_SWIMMING_LESSONS) { chironSwimmingLessons++; }
+        if (itemId == cFAVOR_ON_HUMAN_KILL)     { favorOnHumanKill++;      }
+        if (itemId == cFAVOR_ON_MYTH_KILL)      { favorOnMythKill++;       }
     }
 
 
@@ -4545,6 +4704,36 @@ runImmediately
         trModifyProtounitResource("VillagerChinese",    "food", 1, 0, _disc, 0);
         trModifyProtounitResource("VillagerJapanese",   "food", 1, 0, _disc, 0);
         trModifyProtounitResource("VillagerAztec",      "food", 1, 0, _disc, 0);
+    }
+
+    // Chiron's Swimming Lessons â€” give ChironSPC the Amphibious movement type
+    // for player 1.  Idempotent so multiple copies are safe (the per-scenario
+    // re-apply just resets to Amphibious again).
+    if (chironSwimmingLessons > 0)
+    {
+        trProtoUnitMovementType("ChironSPC", 1, "Amphibious");
+    }
+
+    // Killing-grants-favor effects â€” loop over enemy slots (players 2-7) so
+    // every enemy's units feed favor to player 1 on death.  Multiplier scales
+    // with item-copy count.
+    if (favorOnHumanKill > 0)
+    {
+        float _hfmult = 1.0 * favorOnHumanKill;
+        int _hp = 2;
+        for (_hp = 2; _hp < 8; _hp++)
+        {
+            trModifyProtounitResource("HumanSoldier", "Favor", _hp, 5, _hfmult, 0);
+        }
+    }
+    if (favorOnMythKill > 0)
+    {
+        float _mfmult = 1.0 * favorOnMythKill;
+        int _mp = 2;
+        for (_mp = 2; _mp < 8; _mp++)
+        {
+            trModifyProtounitResource("MythUnit", "Favor", _mp, 5, _mfmult, 0);
+        }
     }
 
     xsDisableSelf();
@@ -5154,6 +5343,88 @@ inactive
         trTechSetStatus(1, kbTechGetID("MythicAgeMictlantecutli"),   0);
         trTechSetStatus(1, kbTechGetID("MythicAgeTlaloc"),           0);
         trTechSetStatus(1, kbTechGetID("MythicAgeXolotl"),           0);
+    }
+}
+
+// -----------------------------------------------------------------------
+// APEnforceTitanLock â€” every second, keeps the SecretsOfTheTitans tech
+// disabled while the player lacks the Unlock Titan Age item for the civ
+// they are playing.  The scenario editor unforbids the titan gates and the
+// SecretsOfTheTitans tech; this watcher re-suppresses the tech each tick
+// until the matching item is held.  When the item IS held, we leave the
+// editor's unforbid intact (re-assert obtainable, never forbid).
+// Enabled from APApplyItems.
+// -----------------------------------------------------------------------
+rule APEnforceTitanLock
+minInterval 1
+inactive
+{
+    int secretsTech = kbTechGetID("SecretsOfTheTitans");
+
+    if (gAPHasTitanForCiv == true)
+    {
+        // Player earned the Titan unlock for this civ.  Actively enable BOTH
+        // the TitanGate proto and the SecretsOfTheTitans tech every tick, so
+        // even scenarios whose editor never cleared them from the forbidden
+        // list still allow titans.
+        trUnforbidProtounit(1, "TitanGate");
+        if (secretsTech > 0) { trTechSetStatus(1, secretsTech, 1); }   // 1 = obtainable
+    }
+    else
+    {
+        // No Titan item for this civ â€” keep both the proto and the tech
+        // suppressed every tick.
+        trForbidProtounit(1, "TitanGate");
+        if (secretsTech > 0) { trTechSetStatus(1, secretsTech, 0); }   // 0 = unobtainable
+    }
+}
+
+// -----------------------------------------------------------------------
+// APEnforceWonderLock â€” every second, gates the Wonder proto + the
+// WonderAgeGeneral/WonderAgeTitan techs based on the player's Progressive
+// Wonder tier, the scenario's starting age, and the player's reachable age.
+//
+// KEY RULE: never fight AoM's natural Mythic-Age wonder enabling.  If the
+// scenario starts in the Mythic Age, or the player's civ has enough Age
+// Unlock items to reach Mythic (gAPAgeCap >= 3), then reaching Mythic will
+// enable wonders on its own â€” so we leave them UNFORBIDDEN and let the age
+// tech gate the actual build.  Progressive Wonder items then only layer on
+// the cost / build-speed / placement / any-age perks.
+//
+//   mythic-capable           â†’ never forbid (vanilla mythic-age gate applies).
+//   not mythic-capable,
+//     tier 5+ (any age)      â†’ never forbid; actively enable in every age.
+//     tier 0..4              â†’ forbid (player can't reach Mythic and has no
+//                               any-age item, so wonders stay disabled).
+// Enabled from APApplyItems.
+// -----------------------------------------------------------------------
+rule APEnforceWonderLock
+minInterval 1
+inactive
+{
+    int wonderTech      = kbTechGetID("WonderAgeGeneral");
+    int wonderTitanTech  = kbTechGetID("WonderAgeTitan");
+
+    // Mythic-capable = scenario starts in Mythic OR the player can reach
+    // Mythic through Age Unlock items.  gAPAgeCap already folds both in
+    // (= clamp(max(scenarioFloor, civAgeUnlockCount), 0, 3)), but we also
+    // check the scenario floor directly for clarity / robustness.
+    int startAge        = APGetStartingAgeCount(gAPScenarioId);
+    bool mythicCapable   = (startAge >= 3) || (gAPAgeCap >= 3);
+
+    bool allowWonders    = mythicCapable || (gAPWonderTier >= 5);
+
+    if (allowWonders == true)
+    {
+        trUnforbidProtounit(1, "Wonder");
+        if (wonderTech > 0) { trTechSetStatus(1, wonderTech, 1); }   // 1 = obtainable
+        if (wonderTitanTech > 0) { trTechSetStatus(1, wonderTitanTech, 1); }
+    }
+    else
+    {
+        trForbidProtounit(1, "Wonder");
+        if (wonderTech > 0) { trTechSetStatus(1, wonderTech, 0); }   // 0 = unobtainable
+        if (wonderTitanTech > 0) { trTechSetStatus(1, wonderTitanTech, 0); }
     }
 }
 

@@ -168,10 +168,13 @@ class _BeveledToggleButton(ToggleButton):
         # Stencil clip + diagonal slashes (hidden via alpha=0 when unlocked).
         self._slash_clip1.pos  = (x, y); self._slash_clip1.size = (w, h)
         self._slash_clip2.pos  = (x, y); self._slash_clip2.size = (w, h)
-        spacing  = dp(14)
+        spacing  = dp(11)
         i        = 0
         x_start  = -h
-        while x_start < w and i < len(self._slash_lines):
+        # Sweep past the right edge by `h` so diagonals whose bottom-left
+        # falls in the rightmost strip still get drawn (stencil clips the
+        # off-rect portion).  Without this the lower-right corner is missed.
+        while x_start < w + h and i < len(self._slash_lines):
             self._slash_lines[i].points = [
                 x + x_start,     y,
                 x + x_start + h, y + h,
@@ -181,6 +184,108 @@ class _BeveledToggleButton(ToggleButton):
         while i < len(self._slash_lines):
             self._slash_lines[i].points = [0, 0, 0, 0]
             i += 1
+
+
+class _ShinyOverlay:
+    """Adds a subtle 'glass card' shine to a button — two diagonal highlight
+    bands, one tucked into the upper-right corner and one into the lower-left,
+    drawn on `canvas.before` so the button's text renders above them.  Lines
+    extend well past the button bounds; a stencil clip keeps the visible
+    portion inside the rectangle.  Toggle with `set_visible(bool)`.
+    """
+
+    def __init__(self, btn, tint=(1, 1, 1)):
+        from kivy.graphics import (
+            StencilPush, StencilUse, StencilUnUse, StencilPop,
+            Rectangle, Color, Line,
+        )
+        self.btn = btn
+        # Band color.  Defaults to white; pass a darker grey for surfaces with
+        # bright backgrounds (e.g. FotT Egyptian yellow / New Atlantis teal)
+        # where a white shine washes out and is hard to see.
+        self._tint = tint
+        # canvas.before puts the shine BEHIND the button's text.  Order within
+        # canvas.before matters — these instructions are appended after the
+        # button's own bg/bevel layer, so they draw on top of the background
+        # but still under the text rendered by the Button on canvas (default).
+        with btn.canvas.before:
+            StencilPush()
+            self._clip1 = Rectangle(pos=(0, 0), size=(0, 0))
+            StencilUse()
+            # Two layered bands per corner: a thicker, very soft outer band
+            # plus a thinner brighter inner band for a glass-edge feel.  All
+            # off by default (alpha 0).
+            self._col_soft   = Color(1, 1, 1, 0.0)
+            self._band_ur_soft = Line(points=[0, 0, 0, 0], width=dp(10))
+            self._band_ll_soft = Line(points=[0, 0, 0, 0], width=dp(10))
+            self._col_bright = Color(1, 1, 1, 0.0)
+            self._band_ur_brt  = Line(points=[0, 0, 0, 0], width=dp(3))
+            self._band_ll_brt  = Line(points=[0, 0, 0, 0], width=dp(3))
+            StencilUnUse()
+            self._clip2 = Rectangle(pos=(0, 0), size=(0, 0))
+            StencilPop()
+        btn.bind(pos=self._update, size=self._update)
+        self._update()
+
+    def _update(self, *_):
+        x, y, w, h = self.btn.x, self.btn.y, self.btn.width, self.btn.height
+        self._clip1.pos = (x, y); self._clip1.size = (w, h)
+        self._clip2.pos = (x, y); self._clip2.size = (w, h)
+
+        # Both bands run anti-diagonally — slope (+1, -1), upper-left to
+        # lower-right — so the shine reads distinctly from the lower-left→
+        # upper-right "restricted / locked" slashes drawn elsewhere.  Each is
+        # positioned to pass through its target corner; the stencil clip trims
+        # anything beyond the button.
+
+        # Lower-right band: enters above the top edge, sweeps down-right
+        # through the lower-right corner, exiting along the right edge.
+        lr_x0 = x + w - h * 1.2
+        lr_y0 = y + h + h * 0.2
+        lr_end = h * 2.0
+        self._band_ur_soft.points = [
+            lr_x0, lr_y0,
+            lr_x0 + lr_end, lr_y0 - lr_end,
+        ]
+        self._band_ur_brt.points = [
+            lr_x0 + dp(10), lr_y0,
+            lr_x0 + dp(10) + lr_end, lr_y0 - lr_end,
+        ]
+
+        # Upper-left band: point-mirror of the lower-right band so it passes
+        # through the upper-left corner and exits along the left edge.
+        ul_x0 = x - h * 0.2
+        ul_y0 = y + h + h * 0.2
+        ul_end = h * 2.0
+        self._band_ll_soft.points = [
+            ul_x0, ul_y0,
+            ul_x0 + ul_end, ul_y0 - ul_end,
+        ]
+        self._band_ll_brt.points = [
+            ul_x0 + dp(10), ul_y0,
+            ul_x0 + dp(10) + ul_end, ul_y0 - ul_end,
+        ]
+
+    def set_visible(self, on: bool, intensity: float = 1.0) -> None:
+        r, g, b = self._tint
+        if on:
+            # Soft band ~22%, bright inner ~45%.  `intensity` scales both down
+            # for secondary surfaces (e.g. campaign sub-tabs get a fainter shine
+            # than the scenario tiles they summarize).
+            self._col_soft.rgba   = (r, g, b, 0.22 * intensity)
+            self._col_bright.rgba = (r, g, b, 0.45 * intensity)
+        else:
+            self._col_soft.rgba   = (r, g, b, 0.0)
+            self._col_bright.rgba = (r, g, b, 0.0)
+
+
+class _ClickThroughBox(BoxLayout):
+    """BoxLayout whose touch events always propagate past it.  Used to overlay
+    multi-line labels on top of a button face so each line can individually
+    shorten/ellipsise — click still falls through to the button below."""
+    def on_touch_down(self, touch): return False
+    def on_touch_move(self, touch): return False
+    def on_touch_up(self,   touch): return False
 
 
 class _WrapTabBar(BoxLayout):
@@ -280,6 +385,41 @@ _CAMPAIGN_TILE_COLORS: dict[str, tuple[float, float, float]] = {
     "GOLDEN_GIFT":   (0.855, 0.65,   0.1255),
     "NEW_ATLANTIS":  (0.0,   1.0,    1.0),
 }
+
+# Campaigns whose tile/tab background is bright enough (yellow, teal) that a
+# white shine washes out — these use a dark-grey shine instead for contrast.
+_BRIGHT_SHINE_CAMPAIGNS = frozenset({"FOTT_EGYPTIAN", "NEW_ATLANTIS"})
+_GREY_SHINE_TINT = (0.40, 0.40, 0.40)
+
+
+def _shine_tint_for(campaign_name: str) -> tuple:
+    """White shine by default; dark grey for bright-background campaigns."""
+    return _GREY_SHINE_TINT if campaign_name in _BRIGHT_SHINE_CAMPAIGNS else (1, 1, 1)
+
+
+def _e_stack_display_count(remaining: int, total: int, disp_max: int = 5) -> int:
+    """How many cards to draw in a Shop E deck stack, distributing the
+    reduction across the whole deck (not just at the bottom).
+
+    Rules:
+      * full deck shows up to `disp_max` cards;
+      * the first purchase always drops the count by one;
+      * exactly one card left shows a single card;
+      * the in-between counts are spread evenly across the deck size.
+
+    Example (total=12, disp_max=5): 12→5, 11→4, 7→3, 4→2, 1→1.
+    """
+    r, D = int(remaining), int(total)
+    if r <= 1:
+        return 1
+    if r >= D:
+        return max(1, min(disp_max, D))
+    if D <= 2:
+        return max(1, min(disp_max, r))
+    # Map remaining 1..(D-1) onto display 1..(disp_max-1), rounding to nearest.
+    d = 1 + round((r - 1) / (D - 2) * (disp_max - 2))
+    return max(1, min(d, disp_max, r))
+
 
 # Max diagonal slash lines drawn per locked tile — sized for the widest possible span.
 _SLASH_COUNT = 60
@@ -401,6 +541,7 @@ class AoMManager(GameManager):
         disabled_campaign_ids: set,
         scenario_to_god: dict = None,
         scenario_check_counts: dict = None,
+        scenario_in_logic: dict = None,
     ) -> None:
         """Refresh the Scenarios tab.  Safe to call repeatedly; on first call,
         builds the grid; on subsequent calls, just recolors tiles.
@@ -423,6 +564,8 @@ class AoMManager(GameManager):
             scenario_to_god = {}
         if scenario_check_counts is None:
             scenario_check_counts = {}
+        if scenario_in_logic is None:
+            scenario_in_logic = {}
 
         def _update(dt):
             from ..locations.Scenarios import aomScenarioData
@@ -436,6 +579,8 @@ class AoMManager(GameManager):
                 self._scenario_tile_widgets = {}
                 self._campaign_subtabs      = {}
                 self._campaign_grids        = {}
+                self._scenario_tile_shine   = {}   # global_number -> _ShinyOverlay
+                self._scenarios_tab_shine   = {}   # campaign.name  -> _ShinyOverlay
 
                 # --- Overview tab (default) ---
                 ov_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
@@ -472,6 +617,12 @@ class AoMManager(GameManager):
                         _short, (base_rgb[0], base_rgb[1], base_rgb[2], 0.7), scroll,
                     )
                     self._campaign_subtabs[campaign.name] = (idx, _short, campaign.id)
+                    # Faint shine on the tab itself, lit when any scenario in
+                    # this campaign is in logic with checks left.
+                    self._scenarios_tab_shine[campaign.name] = _ShinyOverlay(
+                        self._scenarios_tabbar._buttons[idx],
+                        tint=_shine_tint_for(campaign.name),
+                    )
 
                     # 2-col wide tiles; each campaign now has its own sub-tab so
                     # there's plenty of horizontal room for full scenario names.
@@ -564,11 +715,17 @@ class AoMManager(GameManager):
                             tile, bg_color, slash_col, s.campaign.name,
                             name_lbl, god_lbl, checks_lbl,
                         )
+                        # Glass-card shine, lit when this scenario is in logic
+                        # and still has at least one missing check.
+                        self._scenario_tile_shine[s.global_number] = _ShinyOverlay(
+                            tile, tint=_shine_tint_for(s.campaign.name),
+                        )
                         grid.add_widget(tile)
 
                     section.add_widget(grid)
 
             # Recolor every tile based on current state.
+            _camp_has_shine: dict = {}   # campaign.name -> any tile shining
             for sid, (tile, color, slash_col, camp_name, name_lbl, god_lbl, checks_lbl) in self._scenario_tile_widgets.items():
                 base = _CAMPAIGN_TILE_COLORS.get(camp_name, (0.5, 0.5, 0.5))
                 gid = scenario_to_gate_id.get(sid)
@@ -660,6 +817,20 @@ class AoMManager(GameManager):
                 else:
                     checks_lbl.text = ""
 
+                # Shine: in logic (gates 1-5) AND at least one missing check.
+                has_missing = bool(check_info) and check_info[0] < check_info[1]
+                shine_on    = bool(scenario_in_logic.get(sid, False)) and has_missing
+                shine = self._scenario_tile_shine.get(sid)
+                if shine is not None:
+                    shine.set_visible(shine_on)
+                if shine_on:
+                    _camp_has_shine[camp_name] = True
+
+            # Faint shine on each campaign sub-tab that contains a shining
+            # scenario — half-strength so the tile-level cue stays dominant.
+            for cn, tab_shine in getattr(self, "_scenarios_tab_shine", {}).items():
+                tab_shine.set_visible(bool(_camp_has_shine.get(cn, False)), intensity=0.6)
+
             # --- Per-campaign progress: tab titles + Overview tab ----------
             from ..locations.Scenarios import aomScenarioData as _SD2
             camp_totals: dict = {}   # camp.name -> [found_checks, total_checks, beaten, scen_count, display_name]
@@ -689,6 +860,18 @@ class AoMManager(GameManager):
                 # Mute + slash the tab if the campaign isn't unlocked yet.
                 locked = not bool(campaign_unlocked_by_id.get(camp_id, False))
                 self._scenarios_tabbar.set_tab_locked(idx, locked)
+                # Gray out the tab when every check in this campaign is found.
+                all_found = bool(t) and t[1] > 0 and t[0] >= t[1]
+                if 0 <= idx < len(self._scenarios_tabbar._buttons):
+                    tab_btn = self._scenarios_tabbar._buttons[idx]
+                    if all_found:
+                        new_base = (0.35, 0.35, 0.35, 0.7)
+                    else:
+                        base_rgb = _CAMPAIGN_TILE_COLORS.get(cn, (0.5, 0.5, 0.5))
+                        new_base = (base_rgb[0], base_rgb[1], base_rgb[2], 0.7)
+                    tab_btn._base_bg = new_base
+                    if not tab_btn._locked:
+                        tab_btn._own_bg_col.rgba = new_base
 
             # Default to Overview on first build.
             if self._scenarios_tabbar._buttons and \
@@ -905,7 +1088,7 @@ class AoMManager(GameManager):
                 StartingResources, StartingResourcesLarge,
                 PassiveIncome, PassiveIncomeLarge,
                 RelicTrickle, RelicEffect,
-                Reinforcement, ReinforcementUseful,
+                StartingArmy, StartingArmyUseful,
                 UnitStatBonus,
                 HeroStatBoost, HeroStatBoostFiller,
                 HeroSpecialEffect, HeroActionBoost,
@@ -1162,7 +1345,7 @@ class AoMManager(GameManager):
                         ("Passive Income",       (PassiveIncome, PassiveIncomeLarge),           "55DD66"),
                         ("Relic Trickles",       (RelicTrickle,),                                "55C8E6"),
                         ("Relic Effects",        (RelicEffect,),                                 "C088FF"),
-                        ("Reinforcements",       (Reinforcement, ReinforcementUseful),           "FF9933"),
+                        ("Starting Army",        (StartingArmy, StartingArmyUseful),             "FF9933"),
                         ("Unit Stat Bonuses",    (UnitStatBonus,),                               "FF6F6F"),
                         ("Villager Discounts",   (GenericVillagerDiscount,),                     "B8E04D"),
                         ("Starting Techs",       (StartingEconomyTech, StartingMilitaryTech,
@@ -1598,6 +1781,12 @@ class AoMManager(GameManager):
         self._relic_row_widgets: dict = {}
         # campaign.name -> (tab_index, campaign.id) for lock-state updates.
         self._relic_campaign_subtabs: dict = {}
+        # campaign.name -> [loc_id, ...] for all-found gray-out detection.
+        self._relic_campaign_loc_ids: dict = {}
+        # campaign.name -> [(loc_id, scenario_global_number), ...] for shine.
+        self._relic_campaign_loc_scen: dict = {}
+        # campaign.name -> _ShinyOverlay on the relics sub-tab button.
+        self._relic_tab_shine: dict = {}
         self._relics_built = False
 
     def update_relics_view(
@@ -1606,6 +1795,7 @@ class AoMManager(GameManager):
         checked_locs: set,
         disabled_campaign_ids: set,
         campaign_unlocked_by_id: dict = None,
+        scenario_in_logic: dict = None,
     ) -> None:
         """Refresh the Relics tab.
 
@@ -1618,6 +1808,9 @@ class AoMManager(GameManager):
             checked_locs:          Set of location IDs the player has checked.
             disabled_campaign_ids: Campaign IDs excluded from this seed.
         """
+        if scenario_in_logic is None:
+            scenario_in_logic = {}
+
         def _update(dt):
             # When relicsanity is off keep the placeholder; do nothing else.
             if not relicsanity:
@@ -1668,6 +1861,14 @@ class AoMManager(GameManager):
                     scroll.add_widget(content)
                     _ridx = self._relics_tabbar.add_tab(_short, _hex_rgba(camp_hex, 0.7), scroll)
                     self._relic_campaign_subtabs[campaign.name] = (_ridx, campaign.id)
+                    self._relic_campaign_loc_ids[campaign.name] = []
+                    self._relic_campaign_loc_scen[campaign.name] = []
+                    # Faint shine on the sub-tab, lit when an in-logic relic
+                    # check is still available in this campaign.
+                    self._relic_tab_shine[campaign.name] = _ShinyOverlay(
+                        self._relics_tabbar._buttons[_ridx],
+                        tint=_shine_tint_for(campaign.name),
+                    )
 
                     for scenario, relic_locs in scenario_groups:
                         scen_lbl = Label(
@@ -1687,6 +1888,10 @@ class AoMManager(GameManager):
                             row_lbl.bind(size=row_lbl.setter("text_size"))
                             content.add_widget(row_lbl)
                             self._relic_row_widgets[loc.id] = (row_lbl, loc.location_name)
+                            self._relic_campaign_loc_ids[campaign.name].append(loc.id)
+                            self._relic_campaign_loc_scen[campaign.name].append(
+                                (loc.id, scenario.global_number)
+                            )
 
                         sep = Label(
                             text="[color=252525]" + ("\u2500" * 80) + "[/color]",
@@ -1708,20 +1913,41 @@ class AoMManager(GameManager):
             for cn, (idx, camp_id) in self._relic_campaign_subtabs.items():
                 locked = not bool(_unlock_map.get(camp_id, False))
                 self._relics_tabbar.set_tab_locked(idx, locked)
+                # Gray out the tab when every relic in this campaign is checked.
+                camp_loc_ids = self._relic_campaign_loc_ids.get(cn, [])
+                all_found = bool(camp_loc_ids) and all(lid in checked_locs for lid in camp_loc_ids)
+                if 0 <= idx < len(self._relics_tabbar._buttons):
+                    tab_btn = self._relics_tabbar._buttons[idx]
+                    if all_found:
+                        new_base = (0.35, 0.35, 0.35, 0.7)
+                    else:
+                        camp_hex = self._RELIC_CAMPAIGN_HEX.get(cn, "AAAAAA")
+                        new_base = _hex_rgba(camp_hex, 0.7)
+                    tab_btn._base_bg = new_base
+                    if not tab_btn._locked:
+                        tab_btn._own_bg_col.rgba = new_base
+                # Shine: an in-logic relic check is still available in this campaign.
+                tab_shine = self._relic_tab_shine.get(cn)
+                if tab_shine is not None:
+                    shine_on = any(
+                        (lid not in checked_locs) and bool(scenario_in_logic.get(scen, False))
+                        for lid, scen in self._relic_campaign_loc_scen.get(cn, [])
+                    )
+                    tab_shine.set_visible(shine_on, intensity=0.6)
 
             # ---- Update checkmark state on every call -----------------------
             for loc_id, (row_lbl, loc_name) in self._relic_row_widgets.items():
                 checked  = loc_id in checked_locs
                 if checked:
-                    # Collected: dim green tick, dark text
+                    # Collected: green tick, gray text (still legible).
                     row_lbl.text = (
-                        f"[color=336633]    \u2714[/color]"
-                        f" [color=363636]{loc_name}[/color]"
+                        f"[color=55AA55]    \u2714[/color]"
+                        f" [color=4d4d4d]{loc_name}[/color]"
                     )
                 else:
-                    # Uncollected: blank indent, bold bright text, no X
+                    # Uncollected: blank indent, bold white text, no X.
                     row_lbl.text = (
-                        f"        [b][color=EEEEEE]{loc_name}[/color][/b]"
+                        f"        [b][color=FFFFFF]{loc_name}[/color][/b]"
                     )
 
         Clock.schedule_once(_update)
@@ -1740,12 +1966,74 @@ class AoMManager(GameManager):
     # In-game shop UI has been removed; all purchases happen here.
     # -------------------------------------------------------------------------
 
+    # AP-conventional item classification colors.  Trap matches the trap-queue
+    # color already used elsewhere in the panel; the rest follow the standard
+    # Archipelago palette (light purple for progression, light blue for useful,
+    # teal for filler).
+    _SHOP_RARITY_HEX = {
+        "trap":        "C9695F",
+        "filler":      "00CCCC",
+        "useful":      "6D8BE8",
+        "progression": "AF99EF",
+    }
+
     _SHOP_TIER_HEX = {
         "A": "4DBF4D",   # Marsh — green
         "B": "BFA94D",   # Desert — sand
         "C": "4D8CBF",   # Grass — blue (avoid clashing with A)
         "D": "8C4DBF",   # Hades — purple
         "E": "BF4D4D",   # Sink   — red (Phase 5)
+    }
+    def _make_shop_button_cell(
+        self, height: int, n_rows: int, base_bg_rgba: tuple,
+        font_size: int = 14,
+    ):
+        """Create a FloatLayout grid cell containing a _BeveledToggleButton
+        (face) and N click-through Labels stacked vertically on top.  Each
+        label individually shrinks/ellipsises so multi-line button text
+        collapses gracefully when the window narrows.
+
+        Returns (cell, btn, labels).  `labels[i].text` drives row i."""
+        from kivy.uix.floatlayout import FloatLayout
+        cell = FloatLayout(size_hint_y=None, height=dp(height))
+        # `pos_hint={"x":0,"y":0}` anchors children to the FloatLayout's own
+        # origin.  Without it FloatLayout leaves child.pos at the default
+        # (0,0) absolute, stacking every cell's children at the window origin.
+        btn = _BeveledToggleButton(
+            text="", markup=True,
+            size_hint=(1, 1), pos_hint={"x": 0, "y": 0},
+            background_color=base_bg_rgba,
+        )
+        cell.add_widget(btn)
+        rows = _ClickThroughBox(
+            orientation="vertical",
+            size_hint=(1, 1), pos_hint={"x": 0, "y": 0},
+            padding=(dp(6), dp(6), dp(6), dp(6)),
+        )
+        labels = []
+        for _ in range(n_rows):
+            lbl = Label(
+                text="", markup=True, halign="center", valign="middle",
+                shorten=True, shorten_from="right", max_lines=1,
+                font_size=dp(font_size),
+            )
+            lbl.bind(size=lbl.setter("text_size"))
+            rows.add_widget(lbl)
+            labels.append(lbl)
+        cell.add_widget(rows)
+        # Shine overlay starts hidden; refresh path toggles it on the obelisk
+        # with the most items per tier (when the player has unlocked enough
+        # Progressive Shop Info to see item counts).
+        shine = _ShinyOverlay(btn)
+        return cell, btn, labels, shine
+
+    # Distinct background hue per slot kind — sub-tabs keep their tier color
+    # but the buttons inside use a fixed palette so the type of purchase reads
+    # at a glance regardless of which shop you're in.
+    _SHOP_KIND_HEX = {
+        "item":      "8C4DBF",    # purple — item obelisk
+        "hint":      "4D8CBF",    # blue   — mission-hint slot
+        "hint_info": "F2C84A",    # yellow — Progressive Shop Info slot
     }
 
     def build_gem_shop_tab(self) -> None:
@@ -1754,11 +2042,20 @@ class AoMManager(GameManager):
         is disabled for the seed."""
         if getattr(self, "_gem_shop_tab", None) is not None:
             return
+        # Reduced top padding (was dp(100)) so the header label can spill into
+        # the area previously reserved for the status panel — the header has
+        # plenty of room and the status panel is narrower than the tab area.
         root_box = BoxLayout(
             orientation="vertical",
-            padding=(dp(6), dp(100), dp(6), dp(4)),
-            spacing=dp(4),
+            padding=(dp(6), dp(40), dp(6), dp(4)),
+            spacing=dp(6),
         )
+        header = Label(
+            text="", markup=True, halign="center", valign="middle",
+            size_hint_y=None, height=dp(56), font_size=dp(20),
+        )
+        header.bind(size=header.setter("text_size"))
+        root_box.add_widget(header)
         placeholder = Label(
             text="[color=666666]Gem Shop is not enabled for this seed.[/color]",
             markup=True, halign="left", valign="top",
@@ -1777,6 +2074,7 @@ class AoMManager(GameManager):
             return
         self._gem_shop_tab         = root_box
         self._gem_shop_tabbar      = tabbar
+        self._gem_shop_header      = header
         self._gem_shop_placeholder = placeholder
         self._gem_shop_built       = False
         self._gem_shop_tier_subtabs: dict = {}   # tier -> (tab_idx, content_box)
@@ -1794,7 +2092,10 @@ class AoMManager(GameManager):
         shop_obelisk_assignments: dict,
         purchased_slots: set,
         info_level: int,
+        shop_e_enabled: bool = False,
+        shop_e_decks: list = None,
         on_buy_clicked=None,
+        on_buy_e_card=None,
     ) -> None:
         """Refresh the Gem Shop tab.
 
@@ -1824,6 +2125,14 @@ class AoMManager(GameManager):
             if hasattr(self, "_gem_shop_placeholder") and self._gem_shop_placeholder.parent:
                 self._gem_shop_tab.remove_widget(self._gem_shop_placeholder)
 
+            # Header — global gem balance only.  Per-button "Costs 1 gem"
+            # badge replaces the cost-reminder line.
+            hdr = getattr(self, "_gem_shop_header", None)
+            if hdr is not None:
+                hdr.text = (
+                    f"[b][color=44FF44]Gems available: {int(gems_available)}[/color][/b]"
+                )
+
             from collections import defaultdict
             from ..locations.Locations import TIER_ITEM_IDS
 
@@ -1833,16 +2142,48 @@ class AoMManager(GameManager):
                 self._gem_shop_tabbar.clear_tabs()
                 self._gem_shop_tier_subtabs   = {}
                 self._gem_shop_slot_buttons   = {}
+                self._gem_shop_slot_labels    = {}   # sid -> [Label, ...]
+                self._gem_shop_slot_shine     = {}   # sid -> _ShinyOverlay
 
                 tier_slots: dict = defaultdict(list)
                 for sid in shop_slot_order:
                     tier_slots[sid.split("_", 1)[0]].append(sid)
+                # Display order within each tier: PSI first (yellow Better
+                # Shop Information), then ITEM slots, then mission-hint slots.
+                # Shop A has no PSI button — its HINT slots are all mission
+                # hints and live at the bottom.  Bucket selection consults the
+                # hint config so PSI detection works regardless of slot index.
+                def _slot_sort_key(sid: str) -> tuple:
+                    t, _, rest = sid.partition("_")
+                    is_hint = rest.startswith("HINT_")
+                    try:
+                        idx = int(rest.split("_")[-1])
+                    except ValueError:
+                        idx = 0
+                    is_psi = (is_hint and
+                              shop_hint_config.get(sid, {}).get("type") == "progressive_info")
+                    if is_psi:
+                        bucket = 0
+                    elif not is_hint:
+                        bucket = 1
+                    else:
+                        bucket = 2
+                    return (bucket, idx)
+                for _t in tier_slots:
+                    tier_slots[_t].sort(key=_slot_sort_key)
 
                 for tier in ("A", "B", "C", "D"):
                     if not tier_slots.get(tier):
                         continue
                     hex_col = self._SHOP_TIER_HEX.get(tier, "AAAAAA")
-                    scroll  = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                    scroll  = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True,
+                                          scroll_y=1.0)
+                    # Force scroll position to top after Kivy lays out the
+                    # content.  Without this, tiers whose content overflows the
+                    # viewport sometimes end up positioned at the bottom
+                    # (especially Shop A which now has 8+ buttons).
+                    Clock.schedule_once(lambda _dt, s=scroll: setattr(s, "scroll_y", 1.0), 0)
+                    Clock.schedule_once(lambda _dt, s=scroll: setattr(s, "scroll_y", 1.0), 0.05)
                     content = BoxLayout(
                         orientation="vertical", size_hint_y=None,
                         spacing=dp(6), padding=(dp(8), dp(8), dp(8), dp(8)),
@@ -1858,15 +2199,137 @@ class AoMManager(GameManager):
                     content.add_widget(grid)
 
                     for sid in tier_slots[tier]:
-                        btn = _BeveledToggleButton(
-                            text="", markup=True,
-                            size_hint_y=None, height=dp(96),
-                            background_color=_hex_rgba(hex_col, 0.35),
+                        # 4 stacked labels: header (item summary line 1 OR
+                        # title), summary line 2, summary line 3, status badge.
+                        cell, btn, lbls, shine = self._make_shop_button_cell(
+                            height=144, n_rows=4,
+                            base_bg_rgba=_hex_rgba(hex_col, 0.35),
                         )
-                        grid.add_widget(btn)
+                        grid.add_widget(cell)
                         self._gem_shop_slot_buttons[sid] = btn
+                        self._gem_shop_slot_labels[sid] = lbls
+                        self._gem_shop_slot_shine[sid] = shine
 
                     self._gem_shop_tier_subtabs[tier] = (idx, content)
+
+                # Shop E sub-tab — 4 deck buttons with stack visuals.
+                self._gem_shop_e_deck_buttons: list = []
+                self._gem_shop_e_deck_labels:  list = []   # per deck: [Label,...]
+                if shop_e_enabled:
+                    hex_col = self._SHOP_TIER_HEX.get("E", "BF4D4D")
+                    e_scroll  = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
+                    e_content = BoxLayout(
+                        orientation="vertical", size_hint_y=None,
+                        spacing=dp(10), padding=(dp(8), dp(8), dp(8), dp(8)),
+                    )
+                    e_content.bind(minimum_height=e_content.setter("height"))
+                    e_scroll.add_widget(e_content)
+                    e_idx = self._gem_shop_tabbar.add_tab(
+                        "Shop E", _hex_rgba(hex_col, 0.7), e_scroll,
+                    )
+                    intro = Label(
+                        text="",
+                        markup=True, halign="center", valign="middle",
+                        size_hint_y=None, height=dp(48), font_size=dp(16),
+                    )
+                    intro.bind(size=intro.setter("text_size"))
+                    e_content.add_widget(intro)
+                    self._gem_shop_e_intro = intro
+                    self._gem_shop_e_content = e_content
+                    deck_row = GridLayout(cols=4, size_hint_y=None, spacing=dp(10),
+                                          row_default_height=dp(255),
+                                          row_force_default=True)
+                    deck_row.bind(minimum_height=deck_row.setter("height"))
+                    _E_MAX_BACK = 4            # max peeking cards (top card → 5 shown)
+                    _E_STEP     = dp(4)       # per-card offset (up + right)
+                    _e_base_rgb = tuple(_hex_rgba(hex_col, 1.0)[:3])
+                    self._gem_shop_e_max_back = _E_MAX_BACK
+                    self._gem_shop_e_cells: list = []   # deck_idx -> FloatLayout
+                    self._gem_shop_e_syncs: list = []   # deck_idx -> sync callable
+                    for deck_idx in range(4):
+                        # Card-stack visual: up to _E_MAX_BACK solid "back cards"
+                        # painted in canvas.before — each offset up-and-right from
+                        # the one in front, progressively darker, with a 1px dark
+                        # border (also darker further back).  The face button is
+                        # the bright, clickable top card anchored at lower-left.
+                        cell = FloatLayout(size_hint=(1, 1))
+                        cell._e_back_count = _E_MAX_BACK
+                        cell._e_base_rgb   = _e_base_rgb
+                        _fills, _rects, _borders, _lines = [], [], [], []
+                        with cell.canvas.before:
+                            for _i in range(_E_MAX_BACK):
+                                _fills.append(Color(0, 0, 0, 1))
+                                _rects.append(Rectangle())
+                                _borders.append(Color(0, 0, 0, 1))
+                                _lines.append(Line(width=1.0))
+                        face_btn = _BeveledToggleButton(
+                            text="", markup=True,
+                            size_hint=(None, None),
+                            background_color=(*_e_base_rgb, 1),
+                        )
+                        # 6 click-through labels stacked on top of the button:
+                        # title / item name / recipient / classification /
+                        # remaining-count / state badge.  Each shortens
+                        # individually so multi-line text collapses cleanly.
+                        face_rows = _ClickThroughBox(
+                            orientation="vertical",
+                            size_hint=(None, None),
+                            padding=(dp(6), dp(6), dp(6), dp(6)),
+                        )
+                        deck_labels = []
+                        for _ in range(6):
+                            lbl = Label(
+                                text="", markup=True,
+                                halign="center", valign="middle",
+                                shorten=True, shorten_from="right", max_lines=1,
+                                font_size=dp(14),
+                            )
+                            lbl.bind(size=lbl.setter("text_size"))
+                            face_rows.add_widget(lbl)
+                            deck_labels.append(lbl)
+                        self._gem_shop_e_deck_labels.append(deck_labels)
+
+                        def _sync_cards(_w=None, _v=None, _cell=cell,
+                                        _fills=_fills, _rects=_rects,
+                                        _borders=_borders, _lines=_lines,
+                                        _btn=face_btn, _rows=face_rows,
+                                        _base=_e_base_rgb, _step=_E_STEP,
+                                        _maxb=_E_MAX_BACK):
+                            x, y, w, h = _cell.x, _cell.y, _cell.width, _cell.height
+                            back = max(0, min(_maxb, getattr(_cell, "_e_back_count", _maxb)))
+                            # Card size shrinks so the whole stack fits the cell;
+                            # the backmost card's top-right touches the cell edge.
+                            cw = max(1, w - _step * back)
+                            ch = max(1, h - _step * back)
+                            br, bg, bb = getattr(_cell, "_e_base_rgb", _base)
+                            for i in range(_maxb):
+                                if i < back:
+                                    b = back - i          # i=0 → backmost card
+                                    f  = max(0.30, 1.0 - 0.13 * b)   # darker further back
+                                    gv = max(0.06, 0.30 - 0.045 * b) # border darker further back
+                                    px, py = x + _step * b, y + _step * b
+                                    _fills[i].rgba   = (br * f, bg * f, bb * f, 1)
+                                    _rects[i].pos    = (px, py)
+                                    _rects[i].size   = (cw, ch)
+                                    _borders[i].rgba = (gv, gv, gv, 1)
+                                    _lines[i].rectangle = (px, py, cw, ch)
+                                else:
+                                    _rects[i].size = (0, 0)
+                                    _lines[i].rectangle = (0, 0, 0, 0)
+                            # Top card = the face button + label overlay, anchored
+                            # at the lower-left so back cards peek up and right.
+                            _btn.pos  = (x, y); _btn.size  = (cw, ch)
+                            _rows.pos = (x, y); _rows.size = (cw, ch)
+                        cell.bind(pos=_sync_cards, size=_sync_cards)
+                        cell.add_widget(face_btn)
+                        cell.add_widget(face_rows)
+                        deck_row.add_widget(cell)
+                        self._gem_shop_e_deck_buttons.append(face_btn)
+                        self._gem_shop_e_cells.append(cell)
+                        self._gem_shop_e_syncs.append(_sync_cards)
+                    e_content.add_widget(deck_row)
+                    self._gem_shop_e_deck_row = deck_row
+                    self._gem_shop_tier_subtabs["E"] = (e_idx, e_content)
 
                 if self._gem_shop_tabbar._buttons:
                     self._gem_shop_tabbar.select(0)
@@ -1882,13 +2345,40 @@ class AoMManager(GameManager):
                     return True
                 return beaten_count >= threshold * tier_idx
 
+            # ---- Compute Shop E unlock state (only when E is enabled) -----
+            # E unlocks once every A-D ITEM/HINT slot has been purchased.
+            ad_slot_count   = len([s for s in shop_slot_order
+                                    if s.split("_", 1)[0] in "ABCD"])
+            ad_purchased    = len([s for s in purchased_slots
+                                    if s.split("_", 1)[0] in "ABCD"])
+            e_remaining_ad  = max(0, ad_slot_count - ad_purchased)
+            e_unlocked      = shop_e_enabled and e_remaining_ad == 0
+
+            def _tier_unlocked_e_aware(t: str) -> bool:
+                if t == "E":
+                    return e_unlocked
+                return _tier_unlocked(t)
+
             # ---- Refresh sub-tab titles + lock state -----------------------
             for tier, (idx, _content) in self._gem_shop_tier_subtabs.items():
-                unlocked = _tier_unlocked(tier)
+                unlocked = _tier_unlocked_e_aware(tier)
                 base_label = f"Shop {tier}"
                 self._gem_shop_tabbar.set_button_text(
                     idx, base_label if unlocked else f"{base_label} (locked)"
                 )
+                # Gray out the tab button when every slot in this tier is bought.
+                tier_slots_for_tab = [s for s in shop_slot_order
+                                      if s.split("_", 1)[0] == tier]
+                all_bought = bool(tier_slots_for_tab) and all(
+                    s in purchased_slots for s in tier_slots_for_tab
+                )
+                if 0 <= idx < len(self._gem_shop_tabbar._buttons):
+                    tab_btn = self._gem_shop_tabbar._buttons[idx]
+                    hex_col = self._SHOP_TIER_HEX.get(tier, "AAAAAA")
+                    new_base = (0.35, 0.35, 0.35, 0.7) if all_bought else _hex_rgba(hex_col, 0.7)
+                    tab_btn._base_bg = new_base
+                    if not tab_btn._locked:
+                        tab_btn._own_bg_col.rgba = new_base
                 self._gem_shop_tabbar.set_tab_locked(idx, not unlocked)
 
             # ---- Per-obelisk summary helpers (mirror archipelago.xs labels)
@@ -1896,6 +2386,15 @@ class AoMManager(GameManager):
             _CLS_RANK = {"trap": -1, "filler": 0, "useful": 1, "progression": 2}
             _CLS_DISP = {"trap": "Trap", "filler": "Filler",
                          "useful": "Useful", "progression": "Advancement"}
+
+            def _items_word(n: int) -> str:
+                return "item" if n == 1 else "items"
+
+            def _rarest_markup(cls_key: str, disp: str) -> str:
+                col = self._SHOP_RARITY_HEX.get(cls_key)
+                if col is None:
+                    return disp
+                return f"[b][color={col}]{disp}[/color][/b]"
 
             def _obelisk_summary(det_list: list, level: int) -> str:
                 if not det_list or level <= 0:
@@ -1911,17 +2410,49 @@ class AoMManager(GameManager):
                 main_player = Counter(
                     d.get("player_name", "?") for d in det_list
                 ).most_common(1)[0][0]
+                n_w  = _items_word(n)
+                rn_w = _items_word(rarest_n)
+                # Color the rarest classification with the AP item palette
+                # once the player has unlocked rarity reveal (level >= 2).
+                rarest_text = _rarest_markup(rarest_cls, rarest_disp)
                 if level == 1:
-                    return f"{n} items\n? is rarest\n?: main recipient"
+                    return f"{n} {n_w}\n? is rarest\n?: main recipient"
                 if level == 2:
-                    return f"{n} items\n{rarest_disp} is rarest\n?: main recipient"
+                    return f"{n} {n_w}\n{rarest_text} is rarest\n?: main recipient"
                 if level == 3:
-                    return f"{n} items\n{rarest_disp} is rarest\n{main_player}: main recipient"
-                return (f"{n} items\n{rarest_disp} is rarest\n"
-                        f"{rarest_n} {rarest_disp} items\n{main_player}: main recipient")
+                    return f"{n} {n_w}\n{rarest_text} is rarest\n{main_player}: main recipient"
+                return (f"{n} {n_w}\n{rarest_text} is rarest\n"
+                        f"{rarest_n} {rarest_text} {rn_w}\n{main_player}: main recipient")
+
+            # ---- Per-tier "most items" obelisk for shine effect --------------
+            # When info_level >= 1 (item counts revealed) and the obelisk has
+            # not been purchased yet, the obelisk with the most items in each
+            # tier gets a glassy shine to highlight the best gem deal.
+            tier_max_item_sid: dict = {}
+            if int(info_level or 0) >= 1:
+                _per_tier: dict = {}
+                for _sid in self._gem_shop_slot_buttons.keys():
+                    if "_ITEM_" not in _sid:
+                        continue
+                    _t = _sid.split("_", 1)[0]
+                    _n = len(shop_obelisk_assignments.get(_sid, []) or [])
+                    if _sid in purchased_slots:
+                        continue
+                    prev = _per_tier.get(_t)
+                    if prev is None or _n > prev[1]:
+                        _per_tier[_t] = (_sid, _n)
+                tier_max_item_sid = {t: pair[0] for t, pair in _per_tier.items()}
 
             # ---- Refresh each button face ----------------------------------
+            # Each button face is split across 4 stacked labels so individual
+            # lines collapse/ellipsise when the window narrows.  rows[0..3]:
+            #   item slot       — summary line 1 / 2 / 3 / state badge
+            #   shop info slot  — title / subtitle a / subtitle b / state badge
+            #   hint slot       — title / subtitle / blank / state badge
             for sid, btn in self._gem_shop_slot_buttons.items():
+                rows = self._gem_shop_slot_labels.get(sid) or []
+                if len(rows) < 4:
+                    continue
                 tier      = sid.split("_", 1)[0]
                 unlocked  = _tier_unlocked(tier)
                 purchased = sid in purchased_slots
@@ -1931,28 +2462,74 @@ class AoMManager(GameManager):
                     det     = [shop_item_details.get(int(l), {}) for l in loc_ids]
                     det     = [d for d in det if d]
                     summary = _obelisk_summary(det, int(info_level or 0))
-                    face    = f"[b]{sid}[/b]\n{summary}\n[color=44FF44]1 gem[/color]"
+                    parts   = summary.split("\n")
+                    row_texts = [
+                        parts[0] if len(parts) > 0 else "",
+                        parts[1] if len(parts) > 1 else "",
+                        parts[2] if len(parts) > 2 else "",
+                    ]
+                    kind = "item"
                 else:
                     hcfg  = shop_hint_config.get(sid, {}) or {}
                     htype = hcfg.get("type", "")
                     if htype == "progressive_info":
-                        face = (f"[b]{sid}[/b]\nBetter Shop Information\n"
-                                f"[color=44FF44]1 gem[/color]")
+                        row_texts = [
+                            "[b][color=F2C84A]★ Better Shop Information[/color][/b]",
+                            "[color=DDDDDD]Reveals more about every[/color]",
+                            "[color=DDDDDD]shop item[/color]",
+                        ]
+                        kind = "hint_info"
                     else:
-                        rng = hcfg.get("missions_range")
-                        rng_str = f" ({rng[0]}-{rng[1]} missions)" if rng else ""
-                        face = (f"[b]{sid}[/b]\nMission Hints{rng_str}\n"
-                                f"[color=44FF44]1 gem[/color]")
+                        # Prefer the new static missions_count (rolled at gen);
+                        # fall back to the legacy missions_range for older slots.
+                        count = hcfg.get("missions_count")
+                        if count is None:
+                            rng = hcfg.get("missions_range")
+                            if rng and rng[0] == rng[1]:
+                                count = rng[0]
+                        if count is not None:
+                            word = "mission" if count == 1 else "missions"
+                            subtitle = f"Hints {count} {word}"
+                        else:
+                            rng = hcfg.get("missions_range")
+                            subtitle = f"Hints ({rng[0]}-{rng[1]} missions)" if rng else "Hints"
+                        row_texts = [
+                            "[b][color=44CCFF]❖ Mission Hints[/color][/b]",
+                            f"[color=DDDDDD]{subtitle}[/color]",
+                            "",
+                        ]
+                        kind = "hint"
 
                 if purchased:
-                    face = f"[s]{face}[/s]\n[color=AAAAAA]Purchased[/color]"
+                    state_badge = "[color=AAAAAA]Purchased[/color]"
                 elif not unlocked:
-                    face = f"{face}\n[color=AA4444]Shop locked[/color]"
-                elif gems_available <= 0:
-                    face = f"{face}\n[color=C9695F]Need gems[/color]"
+                    state_badge = "[color=AA4444]Shop locked[/color]"
+                else:
+                    state_badge = "[color=44FF44]Costs 1 gem[/color]"
 
-                btn.text = face
+                if purchased:
+                    import re as _re
+                    _strip = lambda s: _re.sub(r'\[/?(?:b|color(?:=[^\]]*)?)\]', '', s)
+                    row_texts = [_strip(t) for t in row_texts]
+
+                rows[0].text = row_texts[0]
+                rows[1].text = row_texts[1]
+                rows[2].text = row_texts[2]
+                rows[3].text = state_badge
+
+                # Background color is keyed off slot kind, not tier — sub-tabs
+                # carry the tier color so buttons can show purpose at a glance.
+                base_hex = self._SHOP_KIND_HEX.get(kind, "8C4DBF")
+                alpha    = 0.55 if kind == "hint_info" else 0.45
+                btn._base_bg = _hex_rgba(base_hex, alpha)
+
                 btn.set_locked(purchased or not unlocked)
+
+                # Shine highlight on the item-count champion of each tier.
+                shine = self._gem_shop_slot_shine.get(sid)
+                if shine is not None:
+                    shine.set_visible(tier_max_item_sid.get(tier) == sid
+                                       and not purchased and unlocked)
 
                 # Re-bind click handler each refresh so it captures the *latest*
                 # tier-unlock / gems-available / purchased state by closure.  Cheap
@@ -1975,7 +2552,144 @@ class AoMManager(GameManager):
                 btn._aom_buy_handler = _h
                 btn.bind(on_release=_h)
 
+            # ---- Refresh Shop E deck buttons -------------------------------
+            if shop_e_enabled and getattr(self, "_gem_shop_e_deck_buttons", None):
+                deck_row = getattr(self, "_gem_shop_e_deck_row", None)
+                e_content = getattr(self, "_gem_shop_e_content", None)
+                intro     = getattr(self, "_gem_shop_e_intro", None)
+                if not e_unlocked:
+                    # Hide deck entirely.  Only show the "purchase X more"
+                    # message in the intro — no cards visible, no clicks fire.
+                    if deck_row is not None and deck_row.parent is not None:
+                        e_content.remove_widget(deck_row)
+                    if intro is not None:
+                        intro.text = (
+                            f"[b][color=DDDDDD]Purchase {e_remaining_ad} more "
+                            f"item{'' if e_remaining_ad == 1 else 's'} from "
+                            f"the shop to unlock this shop.[/color][/b]"
+                        )
+                else:
+                    # Unlocked — show deck + brief instructions (no "Gem Sink").
+                    if deck_row is not None and deck_row.parent is None and e_content is not None:
+                        e_content.add_widget(deck_row)
+                    if intro is not None:
+                        intro.text = (
+                            "[color=DDDDDD]Each deck reveals one card at a time. "
+                            "Buy the top card to flip the next.[/color]"
+                        )
+                    e_decks = shop_e_decks or []
+                    for deck_idx, face_btn in enumerate(self._gem_shop_e_deck_buttons):
+                        rows = (self._gem_shop_e_deck_labels[deck_idx]
+                                if deck_idx < len(self._gem_shop_e_deck_labels) else [])
+                        if len(rows) < 6:
+                            continue
+                        deck = e_decks[deck_idx] if deck_idx < len(e_decks) else []
+                        # Find first unpurchased card.  Slot id format for E:
+                        # "E_<loc_id>" — matches what on_buy_e_card persists.
+                        top_card  = None
+                        remaining = 0
+                        for card in deck:
+                            sid = f"E_{card.get('loc_id')}"
+                            if sid not in purchased_slots:
+                                if top_card is None:
+                                    top_card = card
+                                remaining += 1
+                        if top_card is None:
+                            row_texts = [
+                                "[color=AAAAAA]Empty[/color]",
+                                "", "", "", "", "",
+                            ]
+                        elif top_card.get("kind", "filler") == "hint":
+                            # Hint cards carry no item reward — they reveal a
+                            # random unbeaten mission's checks on purchase.
+                            row_texts = [
+                                "[b]❖ Mission Hint[/b]",
+                                "[color=DDDDDD]Reveals a random[/color]",
+                                "[color=DDDDDD]unbeaten mission's checks[/color]",
+                                "",
+                                "[color=44FF44]Costs 1 gem[/color]",
+                                "",
+                            ]
+                        else:
+                            # E unlocking requires every PSI bought, so always
+                            # show full info — no obfuscation.
+                            item_name = top_card.get("item_name") or "???"
+                            player    = top_card.get("player_name") or ""
+                            cls       = (top_card.get("classification") or "filler").lower()
+                            cls_disp  = {"trap": "Trap", "filler": "Filler",
+                                         "useful": "Useful", "progression": "Advancement"}.get(
+                                            cls, cls.title())
+                            # Match the rest of the shop's rarity palette
+                            # (filler teal, useful blue, etc.).
+                            cls_col   = self._SHOP_RARITY_HEX.get(cls, "AAAAAA")
+                            row_texts = [
+                                f"[b]{item_name}[/b]",
+                                f"[color=DDDDDD]→ {player}[/color]" if player else "",
+                                f"[color={cls_col}]{cls_disp}[/color]",
+                                f"[color=DDDDDD]{remaining} card{'' if remaining == 1 else 's'} left[/color]",
+                                "[color=44FF44]Costs 1 gem[/color]",
+                                "",
+                            ]
+                        for _i in range(6):
+                            rows[_i].text = row_texts[_i]
+
+                        cells = getattr(self, "_gem_shop_e_cells", [])
+                        syncs = getattr(self, "_gem_shop_e_syncs", [])
+
+                        # Top-card color: purple for item cards, blue for hint
+                        # cards — matching the shop A-D item/hint button hues.
+                        if top_card is not None:
+                            _kind = top_card.get("kind", "filler")
+                            _base_hex = self._SHOP_KIND_HEX["hint"] if _kind == "hint" \
+                                        else self._SHOP_KIND_HEX["item"]
+                            _base_rgb = tuple(_hex_rgba(_base_hex, 1.0)[:3])
+                            face_btn._base_bg = (*_base_rgb, 1)
+                            if deck_idx < len(cells):
+                                cells[deck_idx]._e_base_rgb = _base_rgb
+                        face_btn.set_locked(top_card is None)
+
+                        # Distribute the stack-height reduction across the whole
+                        # deck (not just the bottom), then re-sync geometry.
+                        if deck_idx < len(cells):
+                            _disp = _e_stack_display_count(remaining, len(deck), disp_max=5)
+                            cells[deck_idx]._e_back_count = max(0, _disp - 1)
+                            syncs[deck_idx]()
+
+                        # Rebind click for this deck button.
+                        face_btn.unbind(on_release=getattr(face_btn, "_aom_buy_handler",
+                                                           lambda *a: None))
+                        def _make_e_handler(_di=deck_idx, _unl=e_unlocked, _av=gems_available,
+                                            _top=top_card, _rem_ad=e_remaining_ad):
+                            def _h(_b):
+                                self._on_gem_shop_e_clicked(
+                                    deck_idx=_di,
+                                    unlocked=_unl,
+                                    gems_available=_av,
+                                    top_card=_top,
+                                    remaining_ad=_rem_ad,
+                                    on_buy_e_card=on_buy_e_card,
+                                )
+                            return _h
+                        _eh = _make_e_handler()
+                        face_btn._aom_buy_handler = _eh
+                        face_btn.bind(on_release=_eh)
+
         Clock.schedule_once(_update)
+
+    def _check_gem_shop_click_lockout(self, key: str, period_s: float) -> bool:
+        """Anti-double-click guard.  Returns True if the click should proceed
+        (and records the click), False if the same `key` was clicked less
+        than `period_s` seconds ago.  Tracked per-key so different buttons
+        don't block each other."""
+        import time
+        if not hasattr(self, "_gem_shop_click_lockout"):
+            self._gem_shop_click_lockout: dict = {}
+        now  = time.monotonic()
+        last = self._gem_shop_click_lockout.get(key, 0.0)
+        if now - last < period_s:
+            return False
+        self._gem_shop_click_lockout[key] = now
+        return True
 
     def _on_gem_shop_slot_clicked(
         self, slot_id: str, tier: str, tier_unlocked: bool,
@@ -1987,12 +2701,26 @@ class AoMManager(GameManager):
 
           * purchased         → toast: already bought
           * tier locked       → popup: "Beat N more scenarios to unlock this shop"
-          * no gems           → toast: need gems
+          * no gems           → popup: earn gems by beating scenarios
           * otherwise         → invoke on_buy_clicked(slot_id) (ApClient does the buy)
+
+        Always reset the source ToggleButton back to the normal state — Kivy's
+        ToggleButton keeps state="down" after a click otherwise, which left
+        un-buyable buttons looking pressed.
         """
         logger = logging.getLogger(__name__)
+        btn = self._gem_shop_slot_buttons.get(slot_id)
+        if btn is not None:
+            btn.state = "normal"
+
+        # 5s double-click guard per slot.  Purchases that take a moment to
+        # round-trip to the server otherwise get duplicated when impatient
+        # players click again.
+        if not self._check_gem_shop_click_lockout(slot_id, 5.0):
+            return
+
         if purchased:
-            self._show_shop_message(f"{slot_id} already purchased.")
+            self._show_shop_message("Already purchased.")
             return
         if not tier_unlocked:
             tier_idx = "ABCD".index(tier) if tier in "ABCD" else 0
@@ -2003,7 +2731,9 @@ class AoMManager(GameManager):
             self._show_shop_message(msg, title=f"Shop {tier} locked")
             return
         if gems_available <= 0:
-            self._show_shop_message("Not enough gems.", title="Gem Shop")
+            self._show_shop_message(
+                "Earn gems by beating scenarios.", title="Not enough gems",
+            )
             return
         if on_buy_clicked is None:
             logger.info(f"Gem Shop clicked (no-op): {slot_id}")
@@ -2012,6 +2742,54 @@ class AoMManager(GameManager):
             on_buy_clicked(slot_id)
         except Exception as ex:
             logger.warning(f"Gem Shop buy callback failed for {slot_id}: {ex}")
+
+    def _on_gem_shop_e_clicked(
+        self, deck_idx: int, unlocked: bool, gems_available: int,
+        top_card, remaining_ad: int, on_buy_e_card,
+    ) -> None:
+        """Click handler for a Shop E deck button.
+
+          * deck empty       → toast
+          * E locked         → "Purchase X more items from the shop to unlock"
+          * no gems          → popup: earn gems by beating scenarios
+          * otherwise        → on_buy_e_card(deck_idx, loc_id, kind)
+        """
+        # Reset visual press state regardless of outcome.
+        if 0 <= deck_idx < len(getattr(self, "_gem_shop_e_deck_buttons", [])):
+            self._gem_shop_e_deck_buttons[deck_idx].state = "normal"
+
+        # Lighter 0.5s lockout per deck — long enough to swallow accidental
+        # double-clicks but short enough to support rapid sequential buys
+        # of the next card up.
+        if not self._check_gem_shop_click_lockout(f"E_deck_{deck_idx}", 0.5):
+            return
+
+        if top_card is None:
+            self._show_shop_message("Deck is empty.", title="Shop E")
+            return
+        if not unlocked:
+            msg = (f"Purchase {remaining_ad} more item"
+                   f"{'s' if remaining_ad != 1 else ''} from the shop "
+                   f"to unlock this shop.")
+            self._show_shop_message(msg, title="Shop E locked")
+            return
+        if gems_available <= 0:
+            self._show_shop_message(
+                "Earn gems by beating scenarios.", title="Not enough gems",
+            )
+            return
+        if on_buy_e_card is None:
+            logging.getLogger(__name__).info(
+                f"Shop E deck {deck_idx+1} clicked (no-op)")
+            return
+        try:
+            on_buy_e_card(
+                deck_idx, int(top_card.get("loc_id", 0)),
+                top_card.get("kind", "filler"),
+            )
+        except Exception as ex:
+            logging.getLogger(__name__).warning(
+                f"Shop E buy callback failed for deck {deck_idx+1}: {ex}")
 
     def _show_shop_message(self, message: str, title: str = "Gem Shop") -> None:
         """Modal popup for shop notices (locked tier, already bought, etc.).

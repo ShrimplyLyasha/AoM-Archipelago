@@ -54,8 +54,8 @@
 #   7. In the AoMR scenario editor, every scenario in the new campaign needs:
 #        * `xsEnableRule("APActivateScenario");` early in its Game Start trigger
 #        * `trQuestVarSet("APScenarioID", <your_id>);` before the rule fires
-#        * Reinforcement spawn flag (Player 12 unit named "APSpawn" or similar
-#          marker — see triggers/archipelago.xs::APFindReinforcementSpawn)
+#        * StartingArmy spawn flag (Player 12 unit named "APSpawn" or similar
+#          marker — see triggers/archipelago.xs::APFindStartingArmySpawn)
 #        * Trap revealer (Player 12 Revealer set to LOS 1000 by editor trigger)
 #        * Whatever per-scenario flags are required by the scenario's victory
 #          conditions (these are scenario-specific — examine the existing FotT
@@ -811,6 +811,171 @@ class aomWorld(World):
         # (not strictly needed but keeps RNG ordering predictable).
         self._generate_keyring_assignments()
 
+        # `start_inventory_from_pool: Gem: N` support — Gems are force-placed
+        # by Rules.place_gems and never live in itempool, so AP's default
+        # processing emits a "tried to remove items that don't exist" warning
+        # and does nothing.  We intercept here: precollect N Gems via
+        # create_items + skip N Victory placements via place_gems so the
+        # economy stays balanced (N earned gems get swapped for filler in the
+        # pool, player starts with those N gems instead).
+        self.starting_gems_from_pool: int = 0
+        if self.gem_shop_enabled:
+            sifp = getattr(self.options, "start_inventory_from_pool", None)
+            sifp_val = getattr(sifp, "value", None) if sifp else None
+            if isinstance(sifp_val, dict):
+                _n = int(sifp_val.get("Gem", 0) or 0)
+                if _n > 0:
+                    self.starting_gems_from_pool = _n
+                    # Pop the entry so AP's own start_inventory_from_pool pass
+                    # doesn't warn about a non-pool item — we handle precollect
+                    # + Victory swap ourselves below.
+                    sifp_val.pop("Gem", None)
+
+        # Shop E (gem sink) — only enabled when the gem pool can afford every
+        # A-D slot plus every E card.  Must run after gem_shop_enabled and
+        # disabled_campaigns are settled.
+        self._generate_shop_e()
+
+
+    def _generate_shop_e(self) -> None:
+        """Generate Shop E deck composition and gem-budget gate.
+
+        Shop E is the post-A-D gem sink.  48 cards distributed across 4 decks
+        of 12, with progressive top-down reveal in the AP client UI.
+
+        Card kinds per spec:
+          * 4 "useful-or-worse" cards    — may hold useful/filler/trap
+          * 4 "mission-hint" cards        — when purchased, client broadcasts a
+                                            hint for one unbeaten scenario
+          * 40 "filler-only" cards        — filler/trap only
+
+        Shuffle (per user spec):
+          1. Combine 40 filler + 4 hint = 44 cards, shuffle → `big`.
+          2. Take big[:8].  Add 4 useful → `small` of 12.  Shuffle small.
+          3. Big remainder = big[8:] = 36 cards.  Slice into 4 decks of 9.
+          4. Distribute small evenly: 3 cards per deck, prepended to its 9.
+
+        Result: each of the 4 decks = 12 ordered cards; top 3 positions of
+        any deck draw from `small`, so useful cards always land near the top.
+
+        Gem-budget gate: gems_in_pool >= cost(A-D) + cost(E).  When the gate
+        fails, Shop E stays disabled — no locations registered, no items added,
+        no UI tab.
+        """
+        # Attributes always defined so downstream code can branch cleanly.
+        self.shop_e_enabled: bool                  = False
+        self.shop_e_decks:   list[list[int]]       = []   # 4 lists of 12 loc_ids
+        self.shop_e_card_kind: dict[int, str]      = {}   # loc_id -> "useful"|"hint"|"filler"
+        self.shop_e_useful_ids: set[int]           = set()
+        self.shop_e_hint_ids:   set[int]           = set()
+        self.shop_e_filler_ids: set[int]           = set()
+
+        if not self.gem_shop_enabled:
+            return
+
+        from .locations.Locations import (
+            SHOP_E_LOCATION_IDS, SHOP_E_DECK_COUNT,
+            SHOP_E_DEFAULT_DECK_DEPTH, SHOP_E_MAX_DECK_DEPTH,
+            ALL_SHOP_ITEM_IDS, ALL_PROGRESSIVE_INFO_IDS,
+        )
+        from .locations.Scenarios import aomScenarioData
+        from .locations.Campaigns import aomCampaignData as _C
+
+        # ---- Gem budget --------------------------------------------------
+        # Gems = 1 per active scenario victory except FOTT_32 (which is the goal).
+        active_scenarios = [
+            s for s in aomScenarioData
+            if s.campaign not in self.disabled_campaigns
+            and not (s.campaign == _C.FOTT_FINAL and s.global_number == 32)
+        ]
+        gems_in_pool = len(active_scenarios)
+
+        # A-D buyable buttons:
+        #   A = 6 items + 2 mission hints                     = 8
+        #   B = 4 items + 1 PSI + 2 mission hints              = 7
+        #   C = 3 items + 1 PSI + 1 mission hint               = 5
+        #   D = 2 items + 1 PSI                                = 3
+        # Total = 23.  Shop E unlocks at >= 24 gems (i.e. >= 1 excess).
+        from .locations.Locations import SHOP_SLOT_ORDER
+        ad_cost = len(SHOP_SLOT_ORDER)
+        excess  = gems_in_pool - ad_cost
+        if excess < 1:
+            return
+
+        # ---- Per-deck depth -------------------------------------------------
+        # Player can buy `excess` cards from Shop E in total.  We size each deck
+        # so the shop can absorb the excess (and a bit more) without going
+        # absurdly deep on small-excess seeds:
+        #   excess in [1, default-1]   → depth = excess           (1..11)
+        #   excess in [default, 4*default] → depth = default      (12)
+        #   excess > 4*default         → depth = ceil(excess / 4) (≥ 13)
+        # Always clamped to [1, SHOP_E_MAX_DECK_DEPTH].
+        if excess >= SHOP_E_DECK_COUNT * SHOP_E_DEFAULT_DECK_DEPTH:
+            from math import ceil
+            per_deck_depth = ceil(excess / SHOP_E_DECK_COUNT)
+        else:
+            per_deck_depth = min(excess, SHOP_E_DEFAULT_DECK_DEPTH)
+        per_deck_depth = max(1, min(per_deck_depth, SHOP_E_MAX_DECK_DEPTH))
+
+        total_cards = SHOP_E_DECK_COUNT * per_deck_depth
+
+        # ---- Card-kind composition ------------------------------------------
+        # 4 useful (always — 1 per deck minimum), then up to 4 hints, then
+        # filler fills the rest.  Drop filler first, then hints, when total
+        # is small.
+        useful_count = SHOP_E_DECK_COUNT                                    # 4
+        hint_count   = max(0, min(SHOP_E_DECK_COUNT, total_cards - useful_count))
+        filler_count = max(0, total_cards - useful_count - hint_count)
+
+        ids = list(SHOP_E_LOCATION_IDS[:total_cards])
+        useful_ids = set(ids[:useful_count])
+        hint_ids   = set(ids[useful_count:useful_count + hint_count])
+        filler_ids = set(ids[useful_count + hint_count:])
+
+        # ---- Shuffle so useful cards land near the top of every deck --------
+        #
+        # We carve `top_per_deck = min(3, depth)` slots off the top of each
+        # deck.  All 4 useful cards plus enough hint/filler to fill the
+        # top region go into the "top pool", which is shuffled then sliced
+        # `top_per_deck` cards into each of the 4 output decks.  The rest of
+        # the cards go into a "bottom pool", shuffled and sliced into the
+        # bottom of each deck.  This guarantees useful cards are always within
+        # the first `top_per_deck` positions of some deck — even when depth=1
+        # (each deck IS just the useful card).
+        top_per_deck     = min(3, per_deck_depth)
+        bottom_per_deck  = per_deck_depth - top_per_deck
+        top_pool_size    = SHOP_E_DECK_COUNT * top_per_deck
+        bottom_pool_size = SHOP_E_DECK_COUNT * bottom_per_deck
+
+        non_useful = list(hint_ids) + list(filler_ids)
+        self.random.shuffle(non_useful)
+        top_non_useful_needed = top_pool_size - useful_count
+        top_non_useful        = non_useful[:top_non_useful_needed]
+        bottom_pool           = non_useful[top_non_useful_needed:top_non_useful_needed + bottom_pool_size]
+
+        top_pool = list(useful_ids) + top_non_useful
+        self.random.shuffle(top_pool)
+
+        decks: list[list[int]] = []
+        for d in range(SHOP_E_DECK_COUNT):
+            top    = top_pool[d * top_per_deck:(d + 1) * top_per_deck]
+            bottom = bottom_pool[d * bottom_per_deck:(d + 1) * bottom_per_deck]
+            decks.append(top + bottom)
+            assert len(decks[-1]) == per_deck_depth, "Shop E deck size mismatch"
+
+        # ---- Stash --------------------------------------------------------
+        self.shop_e_enabled        = True
+        self.shop_e_decks          = decks
+        self.shop_e_useful_ids     = useful_ids
+        self.shop_e_hint_ids       = hint_ids
+        self.shop_e_filler_ids     = filler_ids
+        self.shop_e_per_deck_depth = per_deck_depth
+        self.shop_e_active_ids     = set(ids)   # subset of SHOP_E_LOCATION_IDS we actually use
+        kind_map = {}
+        for lid in useful_ids: kind_map[lid] = "useful"
+        for lid in hint_ids:   kind_map[lid] = "hint"
+        for lid in filler_ids: kind_map[lid] = "filler"
+        self.shop_e_card_kind = kind_map
 
 
     def _generate_shop_assignments(self) -> tuple:
@@ -1398,6 +1563,21 @@ class aomWorld(World):
 
             # Arkantos/Chiron items — removed when ALL FotT campaigns (Greek,
             # Egyptian, Norse) are disabled (i.e. only new campaigns enabled).
+            # "Chiron didn't die" — Norse-specific carve-out (must come before
+            # the generic Chiron exclusion below).  This item spawns ChironSPC
+            # only in FotT 29/30/31/32, so it's dead weight if Norse is off,
+            # but has value as long as Norse is on (independent of Greek /
+            # Egyptian state).
+            if item == Items.aomItemData.CHIRON_DIDNT_DIE:
+                from .locations.Campaigns import aomCampaignData as _C
+                if _C.FOTT_NORSE in self.disabled_campaigns:
+                    continue
+                # Skip the generic Chiron block below — its all-FotT-disabled
+                # rule would also be true if Norse is on, but the override
+                # logic should NOT fall through, since this item is already
+                # being kept by the check above.
+                pass  # fall through to classification bucket
+
             _is_arkantos_item = (
                 getattr(item.type, "hero", "") == "Arkantos"
                 or item.item_name.startswith("Arkantos ")
@@ -1407,7 +1587,8 @@ class aomWorld(World):
                 getattr(item.type, "hero", "") == "Chiron"
                 or item.item_name.startswith("Chiron ")
             )
-            if _is_arkantos_item or _is_chiron_item:
+            if (_is_arkantos_item or _is_chiron_item) \
+                    and item != Items.aomItemData.CHIRON_DIDNT_DIE:
                 from .locations.Campaigns import aomCampaignData as _C
                 _all_fott_disabled = (
                     _C.FOTT_GREEK in self.disabled_campaigns
@@ -1415,6 +1596,15 @@ class aomWorld(World):
                     and _C.FOTT_NORSE in self.disabled_campaigns
                 )
                 if _all_fott_disabled:
+                    continue
+
+            # "Chiron didn't die" only has gameplay effect in FotT 29/30/31/32.
+            # Scenarios 29 and 30 are Norse; 31 and 32 are the Final section.
+            # Drop the item when FotT Norse is disabled — the Final section
+            # alone (without prior Chiron storyline) doesn't justify keeping it.
+            if item == Items.aomItemData.CHIRON_DIDNT_DIE:
+                from .locations.Campaigns import aomCampaignData as _C
+                if _C.FOTT_NORSE in self.disabled_campaigns:
                     continue
 
             if item == Items.aomItemData.AJAX_AMANRA_DREAMS:
@@ -1446,12 +1636,15 @@ class aomWorld(World):
             # Civ-specific items — skip if that civ is excluded (YAML opt-out)
             # OR if random_major_gods rolled zero scenarios for that civ
             # (dead-weight progression items eat scenario slots for nothing).
-            # Generic items (reinforcements, heroes, resources) are never skipped.
+            # Generic items (starting-armys, heroes, resources) are never skipped.
             if random_major_gods_on and self.effective_excluded_civs:
                 # Primary: items with a culture field (unit unlocks, myth unlocks, age unlocks)
                 _item_civ = getattr(item.type, "culture", None)
                 # Secondary: VillagerCarryCapacity encodes civ in unit_name ("VillagerGreek" etc.)
-                if not _item_civ:
+                # Starting-army items are generic and must never be civ-excluded
+                # (e.g. "VillagerGreek"/"VillagerNorse" starting armies spawn for
+                # any civ), so the unit_name heuristic skips them.
+                if not _item_civ and not isinstance(item.type, Items.StartingArmy):
                     _unit_name = getattr(item.type, "unit_name", "")
                     if   "Greek"    in _unit_name: _item_civ = "Greek"
                     elif "Egyptian" in _unit_name: _item_civ = "Egyptian"
@@ -1479,6 +1672,68 @@ class aomWorld(World):
                 raise ValueError(
                     f"Unhandled classification for {item.item_name}: {classification}"
                 )
+
+        # Myth-unit starting-army throttle.  Too many strong starting myth
+        # units gives the player a runaway opening army.  Cap Heroic-age
+        # myth starting-armys at 4 and Mythic-age at 2 (Classical and human
+        # starting-armys are uncapped — they're not strong enough to matter).
+        # Surplus items are dropped from the pool; the existing
+        # padding/sizing logic backfills the slots with infinite-filler items.
+        # Ages sourced from techtree.xml (which tech enables the proto unit).
+        _HEROIC_MYTH_REINF_PROTOS: frozenset = frozenset({
+            "BattleBoar", "Behemoth", "Hamadryad", "Roc",
+            "BaiHu", "Oni", "Tzitzimitl",
+            "PiXiu", "TaoTie", "ObsidianButterfly",
+        })
+        _MYTHIC_MYTH_REINF_PROTOS: frozenset = frozenset({
+            "FireGiant", "Siren", "Lampades", "Phoenix", "Colossus",
+            "QingLong", "Umibozu", "Ahuizotl",
+        })
+        _MAX_HEROIC_MYTH_REINF  = 5
+        _MAX_MYTHIC_MYTH_REINF  = 3
+
+        def _trim_myth_reinf(age_protos: frozenset, cap: int) -> None:
+            """Walk useful_groups and filler_groups; collect (type_, name) for
+            starting-army items whose proto is in `age_protos`.  If count > cap,
+            randomly drop the surplus from the groups."""
+            hits: list[tuple] = []
+            for _group in (useful_groups, filler_groups):
+                for _type, _names in _group.items():
+                    if not issubclass(_type, Items.StartingArmy):
+                        continue
+                    for _name in _names:
+                        _data = Items.NAME_TO_ITEM.get(_name)
+                        if _data is None:
+                            continue
+                        _proto = getattr(_data.type, "unit_name", "") or ""
+                        if _proto in age_protos:
+                            hits.append((_group, _type, _name))
+            if len(hits) <= cap:
+                return
+            self.random.shuffle(hits)
+            for _group, _type, _name in hits[cap:]:
+                if _name in _group.get(_type, []):
+                    _group[_type].remove(_name)
+            logger.info(
+                f"AoMR: myth-unit starting-army throttle — kept {cap} of "
+                f"{len(hits)} candidates (dropped {len(hits) - cap})."
+            )
+
+        _trim_myth_reinf(_HEROIC_MYTH_REINF_PROTOS, _MAX_HEROIC_MYTH_REINF)
+        _trim_myth_reinf(_MYTHIC_MYTH_REINF_PROTOS, _MAX_MYTHIC_MYTH_REINF)
+
+        # Progressive Wonder Item — 6 stackable copies, useful classification.
+        # Each one the player owns unlocks one wonder-perk tier (see
+        # `Items.ProgressiveWonder` docstring and XS APApplyProgressiveWonder).
+        # The catalog entry is already added to `useful_groups` once via the
+        # main item loop; bump the count to 6 by appending 5 more copies.
+        _PROG_WONDER_COPIES = 6
+        _pw_type = Items.ProgressiveWonder
+        _pw_name = Items.aomItemData.PROGRESSIVE_WONDER.item_name
+        _existing = useful_groups.get(_pw_type, []).count(_pw_name)
+        _extras = max(0, _PROG_WONDER_COPIES - _existing)
+        if _extras > 0:
+            useful_groups.setdefault(_pw_type, []).extend([_pw_name] * _extras)
 
         # Age unlock items — 3 base copies per civ, precollecting starting unlocks
         # Extra copies go to whichever civ is assigned to scenario 32
@@ -1543,6 +1798,30 @@ class aomWorld(World):
                 else:
                     progression_pool.append(ap_item)
 
+        # Titan Age unlocks — one Useful item per ACTIVATED civ.  Same civ
+        # gating as the age unlocks above: Greek/Egyptian/Norse always; the
+        # DLC civs only when random_major_gods is on; skipped for civs that
+        # rolled no scenarios (effective_excluded_civs).  One copy each.
+        titan_unlock_config = [
+            (Items.aomItemData.GREEK_TITAN_UNLOCK,    "Greek"),
+            (Items.aomItemData.EGYPTIAN_TITAN_UNLOCK, "Egyptian"),
+            (Items.aomItemData.NORSE_TITAN_UNLOCK,    "Norse"),
+        ]
+        if random_major_gods_on:
+            titan_unlock_config.extend([
+                (Items.aomItemData.ATLANTEAN_TITAN_UNLOCK, "Atlantean"),
+                (Items.aomItemData.CHINESE_TITAN_UNLOCK,   "Chinese"),
+                (Items.aomItemData.JAPANESE_TITAN_UNLOCK,  "Japanese"),
+                (Items.aomItemData.AZTEC_TITAN_UNLOCK,     "Aztec"),
+            ])
+        for item_data, culture in titan_unlock_config:
+            if culture in self.effective_excluded_civs:
+                if not random_major_gods_on and culture == "Atlantean" and not _new_atlantis_disabled:
+                    pass  # keep Atlantean for NA when random gods are off
+                else:
+                    continue
+            useful_groups.setdefault(Items.TitanAgeUnlock, []).append(item_data.item_name)
+
         # Starting Tech items — 1 copy each.
         # Economy and Military are Useful; Dock and Buildings are Filler.
         # Each item grants all techs of that category up to the scenario's starting age.
@@ -1579,16 +1858,25 @@ class aomWorld(World):
         if gem_shop_on:
             # Subtract the remaining Victory locations — Rules.place_gems locks
             # every Victory except scenario 32 (which is already subtracted above).
+            # When start_inventory_from_pool requested N Gems, place_gems skips
+            # N Victories so they become free-fill — reduce the locked count
+            # by N to keep visible_location_count consistent.
             locked_gem_count = sum(
                 1 for loc in Locations.aomLocationData
                 if loc.type == Locations.aomLocationType.VICTORY
                 and loc.scenario.campaign not in disabled_campaigns
             ) - 1
+            _n_starting_gems = int(getattr(self, "starting_gems_from_pool", 0))
+            locked_gem_count = max(0, locked_gem_count - _n_starting_gems)
             visible_location_count -= locked_gem_count
             # 60 shop item slots are free fill targets.
             visible_location_count += len(Locations.ALL_SHOP_ITEM_IDS)
             # Progressive Shop Info hint slots are locked by
             # Rules.place_progressive_shop_info — do NOT add them.
+            # Shop E card locations are fully force-placed by
+            # `Rules.place_shop_e_items` (4 useful + 44 filler drawn off the
+            # top of the useful/filler pools) so they do NOT contribute to
+            # visible_location_count and their items don't enter `itempool`.
 
         if len(progression_pool) > visible_location_count:
             raise ValueError(
@@ -1699,7 +1987,7 @@ class aomWorld(World):
         # Flatten useful and filler into shuffled lists
         all_useful  = [n for names in useful_groups.values() for n in names]
         all_filler  = [n for names in filler_groups.values() for n in names]
-        # Infinite padding pool: non-reinforcement filler items plus a curated
+        # Infinite padding pool: non-starting-army filler items plus a curated
         # set of stackable useful items (relic trickle and LOS/Regen/Speed/HP
         # effects) whose XS handlers correctly accumulate multiple copies.
         # "Joins the Campaign" items are intentionally excluded — they must
@@ -1726,7 +2014,7 @@ class aomWorld(World):
             name
             for type_, names in filler_groups.items()
             for name in names
-            if not issubclass(type_, Items.Reinforcement)
+            if not issubclass(type_, Items.StartingArmy)
         ]
 
         # Cap "Joins the Campaign" items at exactly 1 copy in the pool.
@@ -1750,6 +2038,53 @@ class aomWorld(World):
         self.random.shuffle(all_useful)
         self.random.shuffle(all_filler)
         self.random.shuffle(all_nonreinf_filler_inf)
+
+        # Shop E force-placement reservation.  When Shop E is enabled, reserve
+        # 4 useful-or-worse names + 44 filler names off the top of the shuffled
+        # pools so `Rules.place_shop_e_items` can place them on the 48 card
+        # locations.  These items do NOT enter `itempool`, so the locations are
+        # invisible to AP's fill — necessary because adding 48 EXCLUDED slots
+        # plus 48 padding filler crowded out progression placement on
+        # all-campaigns + relicsanity + key-rings + random-major-gods configs.
+        self.shop_e_forced_items: dict[int, str] = {}
+        if getattr(self, "shop_e_enabled", False):
+            e_useful_ids = set(getattr(self, "shop_e_useful_ids", set()))
+            e_hint_ids   = set(getattr(self, "shop_e_hint_ids", set()))
+            e_active_ids = list(getattr(self, "shop_e_active_ids", set()))
+            # Shop E filler cards roll traps at HALF the YAML trap rate, so even
+            # at trap_percentage=100 only ~half of Shop E filler becomes traps.
+            shop_e_trap_pct = trap_pct // 2
+
+            def _e_placeholder() -> str:
+                # Non-draining filler from the infinite pool — used where a card
+                # has no real reward (hint cards) so the meaningful filler pool
+                # is not consumed.
+                return all_nonreinf_filler_inf[
+                    len(self.shop_e_forced_items) % len(all_nonreinf_filler_inf)
+                ]
+
+            # Useful slots first.
+            for _lid in e_useful_ids:
+                if all_useful:
+                    self.shop_e_forced_items[_lid] = all_useful.pop()
+                elif all_filler:
+                    self.shop_e_forced_items[_lid] = all_filler.pop()
+                else:
+                    self.shop_e_forced_items[_lid] = _e_placeholder()
+            # Remaining active slots: hint cards hold no real reward (the client
+            # fires a mission hint and never checks the location); filler cards
+            # hold filler, or a trap at half the YAML trap rate.
+            for _lid in e_active_ids:
+                if _lid in e_useful_ids:
+                    continue
+                if _lid in e_hint_ids:
+                    self.shop_e_forced_items[_lid] = _e_placeholder()
+                elif shop_e_trap_pct > 0 and self.random.randint(1, 100) <= shop_e_trap_pct:
+                    self.shop_e_forced_items[_lid] = _next_trap()
+                elif all_filler:
+                    self.shop_e_forced_items[_lid] = all_filler.pop()
+                else:
+                    self.shop_e_forced_items[_lid] = _e_placeholder()
 
         # Useful-pool capacity guard.  `useful` items cannot land in
         # filler-only shop slots (~half of the non-Marsh shop slots).  Marsh
@@ -1802,7 +2137,7 @@ class aomWorld(World):
         # Fill remaining slots in two phases:
         #   Unique phase  (while either pool has items): 1:1 useful:filler alternation.
         #     Useful exhausted mid-phase → draw filler that turn instead.
-        #     Filler exhausted mid-phase → cycle infinite non-reinforcement filler.
+        #     Filler exhausted mid-phase → cycle infinite non-starting-army filler.
         #   Padding phase (both pools exhausted): pure filler from the infinite
         #     filler pool.  No useful items in padding — useful classification
         #     cannot land in filler-only shop slots, which are typically the
@@ -1866,6 +2201,17 @@ class aomWorld(World):
                 f"Visible locations: {visible_location_count}, "
                 f"items in pool: {len(itempool)}."
             )
+
+        # Pre-collected starting Gems (from start_inventory_from_pool: Gem: N).
+        # Pushed here so they aren't part of itempool — place_gems already
+        # skipped N Victory locations to free up the equivalent free-fill
+        # slots, which itempool padding above filled with filler/useful.
+        _n_pre_gems = int(getattr(self, "starting_gems_from_pool", 0))
+        if _n_pre_gems > 0:
+            for _ in range(_n_pre_gems):
+                self.multiworld.push_precollected(
+                    self.create_item(Items.aomItemData.GEM.item_name)
+                )
 
         # Split itempool: route a percentage of filler items into
         # self.local_filler_items so pre_fill can place them locally.
@@ -1935,7 +2281,10 @@ class aomWorld(World):
                 if loc.item is not None:
                     continue  # already filled (shouldn't happen)
                 key_name = Items.item_id_to_name.get(key_iid, f"key_{key_iid}")
-                ap_item = _Item(key_name, _IC.filler, key_iid, self.player)
+                # Match the ScenarioKey catalog classification (progression) so
+                # the AP client renders the per-scenario delivery as purple,
+                # matching the Key Ring that produced it — not teal/filler.
+                ap_item = _Item(key_name, _IC.progression, key_iid, self.player)
                 loc.place_locked_item(ap_item)
 
         # --- Local-filler fast_fill (unchanged) ---
@@ -2087,29 +2436,67 @@ class aomWorld(World):
                         }
             data["shop_item_details"] = shop_item_details
 
-            # Hint slot configs
+            # Hint slot configs.  Per-tier hint composition:
+            #   A — every HINT slot is a mission-hint button (no PSI).
+            #         A_HINT_1, A_HINT_2  each hint  random(1..4) missions
+            #   B — HINT_1 is PSI; remaining hints                  random(1..3)
+            #   C — HINT_1 is PSI; remaining hints                  random(1..2)
+            #   D — HINT_1 is PSI; no other hints
+            # Mission count is rolled once at gen time so it appears as a
+            # static value on the button.
+            _MISSION_RANGES = {"A": (1, 4), "B": (1, 3), "C": (1, 2)}
             shop_hint_config: dict[str, dict] = {}
             for tier, _display, _item_obs, hint_obs in Locations.SHOP_TIER_CONFIGS:
+                psi_used = False
                 for h in range(1, hint_obs + 1):
                     slot_id = f"{tier}_HINT_{h}"
-                    if h == 1:
+                    if tier in Locations.PROGRESSIVE_INFO_TIERS and not psi_used:
+                        # PSI always at HINT_1 for tiers that have one.
                         shop_hint_config[slot_id] = {
-                            "type":       "progressive_info",
-                            "loc_id":     Locations.PROGRESSIVE_INFO_IDS[tier],
+                            "type":   "progressive_info",
+                            "loc_id": Locations.PROGRESSIVE_INFO_IDS[tier],
                         }
-                    else:
-                        # A→1-2 missions, B→2-3 missions, C→3-4 missions (D has no mission hints)
-                        if tier == "A":
-                            missions_range = (1, 2)
-                        elif tier == "B":
-                            missions_range = (2, 3)
-                        else:  # C (Grass)
-                            missions_range = (3, 4)
-                        shop_hint_config[slot_id] = {
-                            "type":           "mission_hints",
-                            "missions_range": missions_range,
-                        }
+                        psi_used = True
+                        continue
+                    rng = _MISSION_RANGES.get(tier)
+                    if rng is None:
+                        # D has no mission hints; shouldn't reach here.
+                        continue
+                    count = self.random.randint(rng[0], rng[1])
+                    shop_hint_config[slot_id] = {
+                        "type":           "mission_hints",
+                        "missions_count": count,
+                        # Preserve the original range field for clients that
+                        # still read it; new code should prefer missions_count.
+                        "missions_range": (count, count),
+                    }
             data["shop_hint_config"] = shop_hint_config
+
+            # Shop E (gem sink) — 4 decks of 12 cards, ordered.  Only present
+            # when the budget gate passed in generate_early.  Client uses the
+            # deck order to control top-card reveal; card_kind tells it whether
+            # purchase should also broadcast a mission hint.
+            data["shop_e_enabled"] = bool(getattr(self, "shop_e_enabled", False))
+            if self.shop_e_enabled:
+                # Serialise deck contents with full per-card item details so
+                # the client can render obfuscated previews identical to A-D.
+                e_decks_serialised: list[list[dict]] = []
+                for deck in self.shop_e_decks:
+                    deck_out: list[dict] = []
+                    for loc_id in deck:
+                        kind = self.shop_e_card_kind.get(loc_id, "filler")
+                        entry: dict = {"loc_id": loc_id, "kind": kind}
+                        name = Locations.location_id_to_name.get(loc_id)
+                        if name:
+                            location = self.multiworld.get_location(name, self.player)
+                            if location and location.item:
+                                entry["item_name"]      = location.item.name
+                                entry["player"]         = location.item.player
+                                entry["player_name"]    = self.multiworld.get_player_name(location.item.player)
+                                entry["classification"] = location.item.classification.name.lower()
+                        deck_out.append(entry)
+                    e_decks_serialised.append(deck_out)
+                data["shop_e_decks"] = e_decks_serialised
 
         return data
 

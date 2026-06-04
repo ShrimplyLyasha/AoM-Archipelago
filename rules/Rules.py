@@ -72,8 +72,8 @@ from ..items.Items import (
     HeroStatBoostFiller,
     PassiveIncome,
     PassiveIncomeLarge,
-    Reinforcement,
-    ReinforcementUseful,
+    StartingArmy,
+    StartingArmyUseful,
     StartingResources,
     StartingResourcesLarge,
     UnitUnlockProgression,
@@ -468,8 +468,8 @@ _BASE_POINTS: dict[type, float] = {
     StartingResourcesLarge: 2.0,
     PassiveIncome:          1.0,
     PassiveIncomeLarge:     2.0,
-    Reinforcement:          1.0,
-    ReinforcementUseful:    2.0,
+    StartingArmy:          1.0,
+    StartingArmyUseful:    2.0,
     HeroStatBoostFiller:    1.0,
     HeroStatBoost:          2.0,
     HeroSpecialEffect:      2.0,
@@ -744,6 +744,37 @@ def _make_scenario_rule(
     return rule
 
 
+def _human_unit_item_names() -> set:
+    """Set of item names for human (non-myth) unit unlocks across every civ.
+    Used by the scenario-7 points rule, which excludes human-unit items from
+    its point total.  Shared between the generation rule and the client-side
+    in-logic replica so the two never drift."""
+    human_unit_types = (UnitUnlockProgression, UnitUnlockUseful)
+    if _ATLANTEAN_TYPES:
+        human_unit_types = human_unit_types + (
+            AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful
+        )
+    human_unit_types = human_unit_types + (
+        ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
+        JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
+        AztecUnitUnlockProgression, AztecUnitUnlockUseful,
+    )
+    return {
+        item.item_name for item in aomItemData
+        if isinstance(item.type, human_unit_types)
+    }
+
+
+def _scenario7_effective_table(point_table: dict[str, float]) -> dict[str, float]:
+    """Copy of `point_table` with every human-unit item zeroed — scenario 7's
+    points gate ignores human-unit unlocks."""
+    names = _human_unit_item_names()
+    return {
+        name: (0.0 if name in names else val)
+        for name, val in point_table.items()
+    }
+
+
 def _get_scenario_god(world, scenario_n: int) -> int:
     """Resolve the god assigned to a scenario for rule purposes.  When
     `random_major_gods` is on `world.god_assignments` is a real mapping;
@@ -757,6 +788,124 @@ def _get_scenario_god(world, scenario_n: int) -> int:
     if assignments:
         return assignments.get(scenario_n, _VANILLA_GODS[scenario_n])
     return _VANILLA_GODS[scenario_n]
+
+
+# --------------------------------------------------
+# Client-side reachability replica (gates 1-5)
+# --------------------------------------------------
+
+class _DictState:
+    """Minimal `CollectionState` stand-in backed by a plain item-name → count
+    dict.  Implements only the `has` / `count` surface the scenario rule
+    factories touch, so the *generation* rules can be replayed by the client
+    without a multiworld.  Keeps the logic definition in one place."""
+
+    def __init__(self, counts: dict[str, int]):
+        self._counts = counts
+
+    def has(self, name: str, player: int, count: int = 1) -> bool:
+        return self._counts.get(name, 0) >= count
+
+    def count(self, name: str, player: int) -> int:
+        return self._counts.get(name, 0)
+
+
+def compute_scenarios_in_logic(
+    received_counts: dict[str, int],
+    god_assignments: dict[int, int],
+    campaign_unlocked_by_id: dict[int, bool],
+    scenario_to_gate_id: dict[int, int],
+    held_gate_ids: set,
+    max_keys_on_keyrings: int,
+    disabled_campaign_ids: set = frozenset(),
+    player: int = 1,
+) -> dict[int, bool]:
+    """Replay gates 1-5 for every scenario without a multiworld and return
+    `{global_number: in_logic}`.
+
+    Mirrors `set_section_rules` (gate 1), `set_scenario_key_rules` (gate 2)
+    and `set_scenario_age_and_point_rules` (gates 3-5: age floor, military
+    unit, points) by reusing the very same rule factories against a
+    `_DictState` built from the player's received items.
+
+    Args:
+        received_counts:         item_name → count the player currently holds.
+        god_assignments:         scenario global_number → major-god id (empty
+                                 dict for non-randomized seeds → vanilla gods).
+        campaign_unlocked_by_id: campaign.id → bool (section/Final unlock).
+        scenario_to_gate_id:     scenario global_number → gate item id (Scenario
+                                 Key or Key Ring); only consulted when
+                                 max_keys_on_keyrings > 0.
+        held_gate_ids:           gate item ids the player holds.
+        max_keys_on_keyrings:    option value (0 = key gate off).
+        disabled_campaign_ids:   campaign.id ints to skip.
+    """
+    state       = _DictState(received_counts)
+    point_table = build_point_table()
+    eff7        = _scenario7_effective_table(point_table)
+    result: dict[int, bool] = {}
+
+    for scenario in aomScenarioData:
+        if scenario.campaign.id in disabled_campaign_ids:
+            continue
+        n    = scenario.global_number
+        data = _SCENARIO_DATA.get(n)
+        if data is None:
+            continue
+        start_age_num, min_required_unlocks, points_needed, is_exempt, is_myth_only = data
+
+        # Gate 1 — section / Final unlock.
+        if not campaign_unlocked_by_id.get(scenario.campaign.id, False):
+            result[n] = False
+            continue
+
+        # Gate 2 — scenario key / key ring.
+        if max_keys_on_keyrings > 0:
+            gid = scenario_to_gate_id.get(n)
+            if gid is not None and gid not in held_gate_ids:
+                result[n] = False
+                continue
+
+        # Gates 3-5 — exempt scenarios skip the age/military/points machinery.
+        if is_exempt:
+            result[n] = True
+            continue
+
+        god_id       = god_assignments.get(n) or _VANILLA_GODS[n]
+        god_civ      = _GOD_TO_CIV.get(god_id, "Greek")
+        unlock_names = _CIV_UNLOCK_NAMES[god_civ]
+
+        if n in _SCENARIO_AGE_CAP:
+            rule = _make_age_capped_scenario_rule(
+                player, god_id, _SCENARIO_AGE_CAP[n], point_table, points_needed,
+            )
+            result[n] = rule(state)
+            continue
+
+        if n in _SCENARIO_HEROIC_FLOOR:
+            rule = _make_heroic_floor_scenario_rule(
+                player, god_id, point_table, points_needed,
+            )
+            result[n] = rule(state)
+            continue
+
+        if n == 7:
+            result[n] = count_points(state, player, eff7) >= points_needed
+            continue
+
+        rule = _make_scenario_rule(
+            player, god_id, _VANILLA_CIV[n],
+            start_age_num, min_required_unlocks, is_myth_only,
+            point_table, points_needed,
+        )
+        ok = rule(state)
+        if ok and n == 2:
+            ok = count_civ_unlocks(state, player, unlock_names) >= 1
+        if ok and n == 32:
+            ok = count_civ_unlocks(state, player, unlock_names) >= 3
+        result[n] = ok
+
+    return result
 
 
 # --------------------------------------------------
@@ -931,24 +1080,7 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
         # Scenario 7: human unit unlocks don't count toward points,
         # no age or military unit unlock required — just 1 point of non-unit items.
         if n == 7:
-            human_unit_types = (UnitUnlockProgression, UnitUnlockUseful)
-            if _ATLANTEAN_TYPES:
-                human_unit_types = human_unit_types + (
-                    AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful
-                )
-            human_unit_types = human_unit_types + (
-                ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
-                JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
-                AztecUnitUnlockProgression, AztecUnitUnlockUseful,
-            )
-            human_unit_names = {
-                item.item_name for item in aomItemData
-                if isinstance(item.type, human_unit_types)
-            }
-            effective_table = {
-                name: (0.0 if name in human_unit_names else val)
-                for name, val in point_table.items()
-            }
+            effective_table = _scenario7_effective_table(point_table)
             add_rule(entrance,
                 lambda state, t=effective_table, p=points_needed:
                     count_points(state, player, t) >= p
@@ -1073,16 +1205,34 @@ def set_completion_rule(world) -> None:
 
 
 def place_gems(world) -> None:
-    """Lock Gems at Victory locations 1-31 when gem_shop is on; otherwise leave them for pool fill."""
+    """Lock Gems at Victory locations 1-31 when gem_shop is on; otherwise leave them for pool fill.
+
+    Honors `starting_gems_from_pool` (parsed from `start_inventory_from_pool: Gem: N`):
+    N randomly-chosen Victory locations are SKIPPED here — those slots become
+    free-fill (AP will drop filler/useful there) and N precollected Gem items
+    are pushed via create_items in lockstep.  Player ends with the same total
+    gems either way; the swap just front-loads them."""
     if not world.gem_shop_enabled:
         return  # victories hold random pool items when shop is disabled
     player     = world.player
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
-    for scenario in aomScenarioData:
-        if scenario == aomScenarioData.FOTT_32:
-            continue
-        if scenario.campaign in disabled_campaigns:
+
+    eligible = [
+        s for s in aomScenarioData
+        if s != aomScenarioData.FOTT_32 and s.campaign not in disabled_campaigns
+    ]
+
+    # Pick which Victories to SKIP (swapped to free-fill).  Deterministic via
+    # world.random so the same seed reproduces the same swap.
+    n_skip = max(0, int(getattr(world, "starting_gems_from_pool", 0)))
+    n_skip = min(n_skip, len(eligible))
+    skip_set: set = set()
+    if n_skip > 0:
+        skip_set = set(world.random.sample(eligible, n_skip))
+
+    for scenario in eligible:
+        if scenario in skip_set:
             continue
         loc = multiworld.get_location(VICTORY_LOCATIONS[scenario].global_name(), player)
         gem = world.create_item(aomItemData.GEM.item_name)
@@ -1090,18 +1240,20 @@ def place_gems(world) -> None:
 
 
 def place_progressive_shop_info(world) -> None:
-    """Lock one Progressive Shop Info item at each shop's hint slot 1 location."""
+    """Lock one Progressive Shop Info item at each shop's hint slot 1 location.
+    Shop A has no PSI button — only B/C/D get a PSI placement (via
+    `PROGRESSIVE_INFO_IDS`, which already excludes A)."""
     if not world.gem_shop_enabled:
         return
     player     = world.player
     multiworld = world.multiworld
-    for tier, display, *_ in SHOP_TIER_CONFIGS:
-        loc_id = PROGRESSIVE_INFO_IDS[tier]
-        name   = location_id_to_name.get(loc_id)
-        if name:
-            loc  = multiworld.get_location(name, player)
-            item = world.create_item(aomItemData.PROGRESSIVE_SHOP_INFO.item_name)
-            loc.place_locked_item(item)
+    for tier, loc_id in PROGRESSIVE_INFO_IDS.items():
+        name = location_id_to_name.get(loc_id)
+        if not name:
+            continue
+        loc  = multiworld.get_location(name, player)
+        item = world.create_item(aomItemData.PROGRESSIVE_SHOP_INFO.item_name)
+        loc.place_locked_item(item)
 
 
 def set_shop_rules(world) -> None:
@@ -1126,8 +1278,11 @@ def set_shop_rules(world) -> None:
             if name:
                 loc = multiworld.get_location(name, player)
                 set_rule(loc, lambda state, r=required: count_completed_scenarios(state, player) >= r)
-        # Also gate the progressive info location for this tier
-        pi_id = PROGRESSIVE_INFO_IDS[tier_name]
+        # Also gate the progressive info location for this tier (only B/C/D
+        # have a PSI location; A is absent from PROGRESSIVE_INFO_IDS).
+        pi_id = PROGRESSIVE_INFO_IDS.get(tier_name)
+        if pi_id is None:
+            continue
         pi_name = location_id_to_name.get(pi_id)
         if pi_name:
             loc = multiworld.get_location(pi_name, player)
@@ -1189,6 +1344,38 @@ def set_shop_rules(world) -> None:
                 ItemClassification.filler, ItemClassification.useful, ItemClassification.trap
             )
 
+    # Shop E item rules are no longer set here — the 48 card locations are
+    # fully force-placed via `place_shop_e_items` so AP's fill never sees them.
+
+def place_shop_e_items(world) -> None:
+    """Force-place the 48 Shop E card items onto their locations.
+
+    Items are pre-reserved in `world.shop_e_forced_items` (set by create_items)
+    from the existing useful / filler pools.  Placing them via
+    `place_locked_item` keeps the locations out of AP's main fill, which
+    avoids the 48 EXCLUDED slots crowding out progression placement on
+    item-pool-heavy YAMLs.
+    """
+    if not getattr(world, "shop_e_enabled", False):
+        return
+    forced = getattr(world, "shop_e_forced_items", None) or {}
+    if not forced:
+        return
+    player     = world.player
+    multiworld = world.multiworld
+    for loc_id, item_name in forced.items():
+        name = location_id_to_name.get(loc_id)
+        if not name:
+            continue
+        try:
+            loc = multiworld.get_location(name, player)
+        except KeyError:
+            continue
+        if loc.item is not None:
+            continue
+        item = world.create_item(item_name)
+        loc.place_locked_item(item)
+
 def set_rules(world) -> None:
     """Top-level entry point — Archipelago calls this after create_regions /
     create_items.  Order matters:
@@ -1209,6 +1396,7 @@ def set_rules(world) -> None:
     place_completion_events(world)
     place_gems(world)
     place_progressive_shop_info(world)
+    place_shop_e_items(world)
     set_section_rules(world)
     set_scenario_age_and_point_rules(world, point_table)
     set_scenario_key_rules(world)
