@@ -780,7 +780,14 @@ class AoMManager(GameManager):
                 # FotT Final / New Atlantis), swap text to black so it stays
                 # legible.  Only applies once fully unlocked — locked tiles
                 # are darkened enough that white text reads fine.
-                if fully_unlocked and not all_checks_done and camp_name in ("NEW_ATLANTIS", "FOTT_EGYPTIAN", "FOTT_FINAL"):
+                if all_checks_done:
+                    # Beaten scenario: render everything (including the god) in
+                    # light gray so it recedes but stays legible on the dark-gray
+                    # tile — no civ-specific god color.
+                    _c0, _c1 = "[color=B5B5B5]", "[/color]"
+                    god_markup = lambda g: f"[i][color=B5B5B5]{g}[/color][/i]"
+                    checks_markup = lambda s: f"[color=B5B5B5]{s}[/color]"
+                elif fully_unlocked and camp_name in ("NEW_ATLANTIS", "FOTT_EGYPTIAN", "FOTT_FINAL"):
                     _c0, _c1 = "[color=000000]", "[/color]"
                     god_markup = lambda g: f"[i][color=000000]{g}[/color][/i]"
                     checks_markup = lambda s: f"[color=000000]{s}[/color]"
@@ -800,7 +807,11 @@ class AoMManager(GameManager):
                 name_lbl.text = name_line_markup
 
                 god_name = scenario_to_god.get(sid)
-                if god_name:
+                if god_name and all_checks_done:
+                    # Beaten scenario: light-gray god name, no civ color/outline.
+                    god_lbl.text = god_markup(god_name)
+                    god_lbl.outline_width = 0
+                elif god_name:
                     # Color god name by civ.  Greek gods get a white border
                     # (blue text on white = readable on any bg).  All other
                     # civs get a black border so the brighter civ colors stay
@@ -1093,6 +1104,8 @@ class AoMManager(GameManager):
                 JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful, JapaneseMythUnitUnlock,
                 AztecUnitUnlockProgression, AztecUnitUnlockUseful, AztecMythUnitUnlock,
                 VillagerCarryCapacity,
+                TitanAgeUnlock,
+                ProgressiveWonder,
                 StartingResources, StartingResourcesLarge,
                 PassiveIncome, PassiveIncomeLarge,
                 RelicTrickle, RelicEffect,
@@ -1175,6 +1188,17 @@ class AoMManager(GameManager):
                      and getattr(it.type, "culture", None) == culture),
                     None,
                 )
+
+            def _civ_has_titan(culture):
+                """True if the player holds this civ's Titan Age unlock — i.e.
+                the civ can research Secrets of the Titans."""
+                it = next(
+                    (i for i in aomItemData
+                     if isinstance(i.type, TitanAgeUnlock)
+                     and getattr(i.type, "culture", None) == culture),
+                    None,
+                )
+                return bool(it and counts.get(it.id, 0) > 0)
 
             def _civ_items_all(culture):
                 """All non-AgeUnlock items that belong to `culture`."""
@@ -1374,6 +1398,37 @@ class AoMManager(GameManager):
                                 _mkrow(f"[color=EEEEEE]    \u2022 {it.item_name}[/color]{sfx}")
                             )
 
+                    # Wonders: each Progressive Wonder received unlocks the
+                    # next tier of wonder perks.  List every currently-unlocked
+                    # upgrade (omit the section entirely when none are held).
+                    _wonder_item = next(
+                        (it for it in all_gen if isinstance(it.type, ProgressiveWonder)),
+                        None,
+                    )
+                    _wonder_n = counts.get(_wonder_item.id, 0) if _wonder_item else 0
+                    if _wonder_n > 0:
+                        # Summarize cumulative perks rather than listing each tier:
+                        # collapse age (Mythic vs any) and cost (20% vs 40%) into a
+                        # single line apiece.  Order: age, cost, build speed, anywhere.
+                        _wonder_lines = []
+                        if _wonder_n >= 5:
+                            _wonder_lines.append("Wonders can be built in any age")
+                        else:
+                            _wonder_lines.append("Wonders can be built at the Mythic Age")
+                        if _wonder_n >= 6:
+                            _wonder_lines.append("Wonders cost 40% less")
+                        elif _wonder_n >= 2:
+                            _wonder_lines.append("Wonders cost 20% less")
+                        if _wonder_n >= 3:
+                            _wonder_lines.append("Wonders build 35% faster")
+                        if _wonder_n >= 4:
+                            _wonder_lines.append("Wonders can be built anywhere")
+                        ib.add_widget(_subhdr("Wonders", color="6A0DAD"))
+                        for _wt in _wonder_lines:
+                            ib.add_widget(
+                                _mkrow(f"[color=EEEEEE]    \u2022 {_wt}[/color]")
+                            )
+
                     # Hero Items: one sub-header per hero, Arkantos first then
                     # alphabetical.  Different gold shade so heroes stand out
                     # from category sub-headers above.
@@ -1411,7 +1466,13 @@ class AoMManager(GameManager):
                     age_item  = _get_age_item(civ)
                     age_count = counts.get(age_item.id, 0) if age_item else 0
                     if age_ref is not None:
-                        age_ref.text = "  " + _age_markup(min(age_count, 3))
+                        _age_txt = "  " + _age_markup(min(age_count, 3))
+                        # If the civ can research Secrets of the Titans, show a
+                        # bright-orange "Titan" badge just past Mythic (with a
+                        # little extra gap); nothing while still Titan-locked.
+                        if _civ_has_titan(civ):
+                            _age_txt += "     [b][color=FF8C1A]Titan[/color][/b]"
+                        age_ref.text = _age_txt
 
                     all_civ = _civ_items_all(civ)
 
@@ -2144,7 +2205,17 @@ class AoMManager(GameManager):
             from collections import defaultdict
             from ..locations.Locations import TIER_ITEM_IDS
 
-            # Skeleton build — once per session, tiers A-D only (E added in Phase 5).
+            # The skeleton (sub-tabs + slot buttons + Shop E decks) is built
+            # once and cached.  When the client reconnects to a *different* slot
+            # in the same window, the new slot may have a different slot layout
+            # or toggle Shop E on/off.  Force a rebuild whenever that signature
+            # changes so Shop E appears/disappears to match the active slot.
+            _shop_sig = (tuple(shop_slot_order), bool(shop_e_enabled))
+            if getattr(self, "_gem_shop_sig", None) != _shop_sig:
+                self._gem_shop_sig   = _shop_sig
+                self._gem_shop_built = False
+
+            # Skeleton build — tiers A-D, plus Shop E when enabled.
             if not self._gem_shop_built:
                 self._gem_shop_built          = True
                 self._gem_shop_tabbar.clear_tabs()
@@ -2250,7 +2321,12 @@ class AoMManager(GameManager):
                     deck_row.bind(minimum_height=deck_row.setter("height"))
                     _E_MAX_BACK = 4            # max peeking cards (top card → 5 shown)
                     _E_STEP     = dp(4)       # per-card offset (up + right)
-                    _e_base_rgb = tuple(_hex_rgba(hex_col, 1.0)[:3])
+                    # Back cards are ALWAYS the (darkened) item purple, regardless
+                    # of whether the front card is an item (purple) or hint (blue).
+                    # Only the front face button takes the per-card kind hue.
+                    _E_CARD_DARKEN = 0.5
+                    _e_base_rgb = tuple(c * _E_CARD_DARKEN
+                                        for c in _hex_rgba(self._SHOP_KIND_HEX["item"], 1.0)[:3])
                     self._gem_shop_e_max_back = _E_MAX_BACK
                     self._gem_shop_e_cells: list = []   # deck_idx -> FloatLayout
                     self._gem_shop_e_syncs: list = []   # deck_idx -> sync callable
@@ -2393,7 +2469,7 @@ class AoMManager(GameManager):
             from collections import Counter
             _CLS_RANK = {"trap": -1, "filler": 0, "useful": 1, "progression": 2}
             _CLS_DISP = {"trap": "Trap", "filler": "Filler",
-                         "useful": "Useful", "progression": "Advancement"}
+                         "useful": "Useful", "progression": "Progression"}
 
             def _items_word(n: int) -> str:
                 return "item" if n == 1 else "items"
@@ -2625,7 +2701,7 @@ class AoMManager(GameManager):
                             player    = top_card.get("player_name") or ""
                             cls       = (top_card.get("classification") or "filler").lower()
                             cls_disp  = {"trap": "Trap", "filler": "Filler",
-                                         "useful": "Useful", "progression": "Advancement"}.get(
+                                         "useful": "Useful", "progression": "Progression"}.get(
                                             cls, cls.title())
                             # Match the rest of the shop's rarity palette
                             # (filler teal, useful blue, etc.).
@@ -2644,16 +2720,23 @@ class AoMManager(GameManager):
                         cells = getattr(self, "_gem_shop_e_cells", [])
                         syncs = getattr(self, "_gem_shop_e_syncs", [])
 
-                        # Top-card color: purple for item cards, blue for hint
-                        # cards — matching the shop A-D item/hint button hues.
+                        # Front face-button color: purple for item cards, blue for
+                        # hint cards — matching the shop A-D item/hint button hues.
+                        # Back cards keep their fixed purple base (set at creation);
+                        # only the front face button changes with the card kind.
                         if top_card is not None:
                             _kind = top_card.get("kind", "filler")
                             _base_hex = self._SHOP_KIND_HEX["hint"] if _kind == "hint" \
                                         else self._SHOP_KIND_HEX["item"]
-                            _base_rgb = tuple(_hex_rgba(_base_hex, 1.0)[:3])
+                            # Shop E cards render the kind hue at full size with no
+                            # alpha muting (unlike the A-D buttons at alpha 0.45), so
+                            # darken the base hue here.  This keeps useful-blue rarity
+                            # text legible against the card and matches the dimmer
+                            # look of the other shops.
+                            _E_CARD_DARKEN = 0.5
+                            _base_rgb = tuple(c * _E_CARD_DARKEN
+                                              for c in _hex_rgba(_base_hex, 1.0)[:3])
                             face_btn._base_bg = (*_base_rgb, 1)
-                            if deck_idx < len(cells):
-                                cells[deck_idx]._e_base_rgb = _base_rgb
                         face_btn.set_locked(top_card is None)
 
                         # Distribute the stack-height reduction across the whole

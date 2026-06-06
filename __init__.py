@@ -160,18 +160,17 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     ChineseMajorGods,
     JapaneseMajorGods,
     AztecMajorGods,
-    MoreFrequentDLCGods,
+    # MoreFrequentDLCGods,  # hidden from players; uncomment to re-expose
     NewAtlantis,
     GoldenGift,
     Relicsanity,
     GemShop,
     WinsToOpenShop,
-    MaxAdvancementItemsInEachShop,
+    MaxProgressionItemsInEachShop,
     LocalFillerFrequency,
     FottGreekCampaign,
     FottEgyptianCampaign,
     FottNorseCampaign,
-    UpdateBuildingsForRandomGod,
     MaxKeysOnKeyrings,
 )
 from .items import Items
@@ -191,7 +190,7 @@ class aomWebWorld(WebWorld):
         OptionGroup("Shop", [
             GemShop,
             WinsToOpenShop,
-            MaxAdvancementItemsInEachShop,
+            MaxProgressionItemsInEachShop,
         ]),
         OptionGroup("Campaigns", [
             FottGreekCampaign,
@@ -201,6 +200,13 @@ class aomWebWorld(WebWorld):
             GoldenGift,
             Relicsanity,
             MaxKeysOnKeyrings,
+        ]),
+        OptionGroup("Starting Campaign", [
+            StartingScenarios,
+        ]),
+        OptionGroup("Final Section", [
+            FinalScenarios,
+            XScenarios,
         ]),
         OptionGroup("Random Major Gods", [
             Random_Major_Gods,
@@ -212,15 +218,7 @@ class aomWebWorld(WebWorld):
             ChineseMajorGods,
             JapaneseMajorGods,
             AztecMajorGods,
-            MoreFrequentDLCGods,
-            UpdateBuildingsForRandomGod,
-        ]),
-        OptionGroup("Starting Setup", [
-            StartingScenarios,
-        ]),
-        OptionGroup("Final Section", [
-            FinalScenarios,
-            XScenarios,
+            # MoreFrequentDLCGods,  # hidden from players; uncomment to re-expose
         ]),
         OptionGroup("Item Pool", [
             ExtraFinalMissionAgeUnlocks,
@@ -989,16 +987,16 @@ class aomWorld(World):
         progression_slots: dict[str, set[int]] = {}
         filler_only_locs: set[int] = set()
 
-        max_adv = int(self.options.max_advancement_items_in_each_shop.value)
-        max_adv = max(0, min(ITEMS_PER_SHOP, max_adv))
+        max_prog = int(self.options.max_progression_items_in_each_shop.value)
+        max_prog = max(0, min(ITEMS_PER_SHOP, max_prog))
 
         # Gem-shop softlock guard.  Only relevant when gem_shop is on (this
         # function is only called in that case).  When shops are
         # immediately accessible and key rings carry few keys (i.e. there
-        # are many small ring items in the pool), advancement items in
+        # are many small ring items in the pool), progression items in
         # shops can be paid for in the wrong order and soft-lock the
         # seed.  Two layers:
-        #   * Hard clamp — auto-zero advancement-in-shops on the worst
+        #   * Hard clamp — auto-zero progression-in-shops on the worst
         #     combination, so the seed stays solvable no matter how the
         #     player spends gems.  Scenario keys must be enabled
         #     (max_keys_on_keyrings > 0) for this branch to apply;
@@ -1008,27 +1006,27 @@ class aomWorld(World):
         #     players get a heads-up without forcing a behaviour change.
         wins_to_open = int(self.options.wins_to_open_shop.value)
         ring_cap     = int(self.options.max_keys_on_keyrings.value)
-        if max_adv > 0:
+        if max_prog > 0:
             if wins_to_open <= 1 and 0 < ring_cap <= 2:
                 logger.warning(
                     "AoMR: gem-shop softlock risk detected "
                     f"(wins_to_open_shop={wins_to_open}, "
                     f"max_keys_on_keyrings={ring_cap}, "
-                    f"max_advancement_items_in_each_shop={max_adv}). "
+                    f"max_progression_items_in_each_shop={max_prog}). "
                     "With shops opening immediately and very small key "
                     "rings, gems spent on the wrong shop slots can "
                     "soft-lock the seed. Auto-clamping "
-                    "max_advancement_items_in_each_shop to 0."
+                    "max_progression_items_in_each_shop to 0."
                 )
-                max_adv = 0
+                max_prog = 0
             elif wins_to_open <= 2 or 0 < ring_cap <= 3:
                 logger.warning(
                     "AoMR: gem-shop softlock risk "
                     f"(wins_to_open_shop={wins_to_open}, "
                     f"max_keys_on_keyrings={ring_cap}, "
-                    f"max_advancement_items_in_each_shop={max_adv}). "
+                    f"max_progression_items_in_each_shop={max_prog}). "
                     "Shops open quickly and/or key rings carry few keys. "
-                    "Spending gems on the wrong advancement slots "
+                    "Spending gems on the wrong progression slots "
                     "may soft-lock progress. Generation continues."
                 )
 
@@ -1037,7 +1035,7 @@ class aomWorld(World):
             self.random.shuffle(locs)
 
             # Marsh (tier A) never allows progression regardless of the option.
-            n_prog = 0 if tier_name == "A" else max_adv
+            n_prog = 0 if tier_name == "A" else max_prog
             progression_slots[tier_name] = set(locs[:n_prog])
 
             # Of the remaining slots, randomly pick ~50% to be filler-only
@@ -1309,10 +1307,15 @@ class aomWorld(World):
         if N <= 0:
             return
 
-        # All active scenario IDs (in active campaigns).
+        # All active scenario IDs (in active campaigns).  FOTT_FINAL (31 & 32)
+        # is excluded: access to the final scenarios is governed solely by the
+        # final_scenarios option (always_open / beat_x / atlantis_key), never by
+        # scenario keys or key rings, regardless of max_keys_on_keyrings.
+        from .locations.Campaigns import aomCampaignData as _C_keys
         active_scenarios: list[int] = [
             s.global_number for s in aomScenarioData
             if s.campaign not in self.disabled_campaigns
+            and s.campaign != _C_keys.FOTT_FINAL
         ]
         if not active_scenarios:
             return
@@ -1729,7 +1732,7 @@ class aomWorld(World):
         _trim_myth_reinf(_HEROIC_MYTH_REINF_PROTOS, _MAX_HEROIC_MYTH_REINF)
         _trim_myth_reinf(_MYTHIC_MYTH_REINF_PROTOS, _MAX_MYTHIC_MYTH_REINF)
 
-        # Progressive Wonder Item — 6 stackable copies, useful classification.
+        # Progressive Wonder — 6 stackable copies, useful classification.
         # Each one the player owns unlocks one wonder-perk tier (see
         # `Items.ProgressiveWonder` docstring and XS APApplyProgressiveWonder).
         # The catalog entry is already added to `useful_groups` once via the
@@ -1892,8 +1895,8 @@ class aomWorld(World):
             )
 
         # Progression-legal location count: scenario locations that can host
-        # advancement items, plus only the shop slots that allow progression
-        # (per max_advancement_items_in_each_shop; Marsh tier never allows
+        # progression items, plus only the shop slots that allow progression
+        # (per max_progression_items_in_each_shop; Marsh tier never allows
         # progression). visible_location_count above includes ALL 60 shop
         # slots, which masks the real squeeze when shops forbid progression —
         # so we re-check here with the tighter count and fail early with a
@@ -1940,15 +1943,15 @@ class aomWorld(World):
             raise ValueError(
                 f"AoMR: progression pool ({len(progression_pool)} items) "
                 f"exceeds the number of locations that can legally hold "
-                f"advancement items ({progression_legal_count}). "
+                f"progression items ({progression_legal_count}). "
                 f"Causes: too few enabled campaigns, per-scenario keys "
                 f"(max_keys_on_keyrings=1) inflating the pool, "
-                f"max_advancement_items_in_each_shop=0 blocking shop slots, "
+                f"max_progression_items_in_each_shop=0 blocking shop slots, "
                 f"or random_major_gods adding civ items without enough "
                 f"scenario locations to host them. "
                 f"Fixes: enable more campaigns, raise max_keys_on_keyrings "
                 f"so keys bundle onto rings, "
-                f"raise max_advancement_items_in_each_shop, enable relicsanity, "
+                f"raise max_progression_items_in_each_shop, enable relicsanity, "
                 f"or disable random_major_gods."
             )
 
@@ -2354,7 +2357,6 @@ class aomWorld(World):
             "final_mode":     int(self.options.final_scenarios.value),
             "x_scenarios":    int(self.options.x_scenarios.value),
             "random_major_gods":      bool(self.options.random_major_gods.value),
-            "update_buildings_for_random_god": bool(self.options.update_buildings_for_random_god.value),
             "gem_shop":       self.gem_shop_enabled,
             "relicsanity":    self.relicsanity_enabled,
             "excluded_civs":  sorted(self.excluded_civs),
@@ -2365,6 +2367,7 @@ class aomWorld(World):
         data["minor_god_full"]        = self.minor_god_full
         data["archaic_forbids"]       = self.archaic_forbids
         data["god_power_assignments"] = self.god_power_assignments
+        data["trap_percentage"]       = int(self.options.trap_percentage.value)
 
         # Scenario unlock items: per-scenario keys (max==1) or Key Rings (max>=2).
         data["max_keys_on_keyrings"]      = int(self.max_keys_on_keyrings)

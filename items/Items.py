@@ -530,7 +530,7 @@ class StartingBuildingsTech:
 
 @dataclass
 class ProgressiveWonder:
-    """Progressive Wonder item — stackable Useful item.  Up to 6 copies in the
+    """Progressive Wonder — stackable Useful item.  Up to 6 copies in the
     pool.  Each copy the player owns unlocks one tier of wonder-related perks:
         1: Wonders can be built once the player reaches the Mythic Age.
         2: Wonders cost 20% less (percent resource reduction).
@@ -1016,11 +1016,11 @@ class aomItemData(enum.IntEnum):
     STARTING_DOCK_TECH      = 5102, "Starting Dock Tech",       StartingDockTech()
     STARTING_BUILDINGS_TECH = 5103, "Starting Buildings Tech",  StartingBuildingsTech()
 
-    # Progressive Wonder Item — useful, stackable; up to 6 copies in pool.
+    # Progressive Wonder — useful, stackable; up to 6 copies in pool.
     # Each one collected unlocks the next tier of wonder perks.  See
     # `aom.items.Items.ProgressiveWonder` for tier semantics and
     # `triggers/archipelago.xs::APApplyProgressiveWonder` for runtime effects.
-    PROGRESSIVE_WONDER       = 5104, "Progressive Wonder Item",   ProgressiveWonder()
+    PROGRESSIVE_WONDER       = 5104, "Progressive Wonder",   ProgressiveWonder()
 
     # -----------------------------------------------------------------------
     # StartingArmys — Additional Filler

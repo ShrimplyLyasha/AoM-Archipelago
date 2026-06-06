@@ -263,6 +263,10 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
         for _scen in aomScenarioData:
             if _scen.campaign in disabled_campaigns:
                 continue
+            # FOTT_FINAL (31 & 32) never participates in the scenario-key
+            # system — access is governed solely by final_scenarios.
+            if _scen.campaign.name == "FOTT_FINAL":
+                continue
             _loc_id = _KD_S2L.get(_scen.global_number)
             if _loc_id is None:
                 continue

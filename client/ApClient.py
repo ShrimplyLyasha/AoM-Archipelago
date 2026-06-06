@@ -560,6 +560,7 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
                 minor_god_assignments=getattr(
                     ctx.game_ctx, "minor_god_assignments", {}
                 ),
+                trap_percentage=int(getattr(ctx.game_ctx, "trap_percentage", 0)),
             )
         except Exception as _ex:
             import logging
@@ -1585,6 +1586,7 @@ class AoMContext(CommonContext):
         self.game_ctx.random_major_gods = bool(slot_data.get("random_major_gods", False))
         raw_gods = slot_data.get("god_assignments", {})
         self.game_ctx.god_assignments = {int(k): int(v) for k, v in raw_gods.items()} if raw_gods else {}
+        self.game_ctx.trap_percentage = int(slot_data.get("trap_percentage", 0))
         raw_minor = slot_data.get("minor_god_assignments", {})
         self.game_ctx.minor_god_assignments = (
             {int(k): v for k, v in raw_minor.items()} if raw_minor else {}

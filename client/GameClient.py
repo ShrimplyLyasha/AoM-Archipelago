@@ -279,7 +279,6 @@ class AoMGameContext:
     final_mode: int = -1           # 0=beat_x, 1=always_open, 2=atlantis_key
     x_scenarios_threshold: int = 0  # only used when final_mode == 0
     random_major_gods: bool = False
-    update_buildings_for_random_god: bool = True
     god_assignments: dict = None         # scenario_id (int) → major_god int
     minor_god_assignments: dict = None   # scenario_id (int) → [tech_name, ...]
     minor_god_full: dict = None          # scenario_id (int) → {tier (int) → [chosen, rejected, is_floor]}
@@ -841,8 +840,6 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     # call sites in archipelago.xs continue to compile without behavior.
     # ----------------------------------------------------------------
 
-    update_bldgs_on = ctx.update_buildings_for_random_god
-
     def _xs(s): lines.append(s)
 
     _xs("")
@@ -874,19 +871,20 @@ def write_aom_state(ctx: AoMGameContext) -> None:
     # Generate APTransformBuildings() — data-only, no tr* calls.
     # Writes scenario→building transform pairs as XS int/string arrays.
     # Execution (tr* calls) lives in archipelago.xs APTransformBuildings().
-    update_bldgs_on2 = ctx.update_buildings_for_random_god
+    # Always on: buildings transform to match the assigned god's civilization.
     _xs("")
     _xs("extern int      gAPBldgTransformCount = 0;")
     _xs("extern int[]    gAPBldgScen           = default;")
     _xs("extern int[]    gAPBldgPlayer         = default;")
     _xs("extern string[] gAPBldgFrom           = default;")
-    _xs("extern string[] gAPBldgTo1            = default;")
-    _xs("extern string[] gAPBldgTo2            = default;")
+    _xs("extern int[]    gAPBldgToOffset       = default;")
+    _xs("extern int[]    gAPBldgToCount        = default;")
+    _xs("extern string[] gAPBldgToList         = default;")
     _xs("")
     _xs("void APLoadBuildingTransforms()")
     _xs("{")
     _xs("    gAPBldgTransformCount = 0;")
-    if update_bldgs_on2 and ctx.god_assignments:
+    if ctx.god_assignments:
         _vanilla_gods2 = {
             1: 2, 2: 2, 3: 2, 4: 2,
             5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1,
@@ -905,7 +903,11 @@ def write_aom_state(ctx: AoMGameContext) -> None:
             # The Golden Gift (APScenarioIDs 601-604)
             601: 8, 602: 9, 603: 9, 604: 8,
         }
-        _pairs = []  # list of (scenId, targetPlayer, fromProto, toProto1, toProto2)
+        # Each entry maps one source proto to the full list of assigned-civ
+        # target protos.  Runtime (APTransformBuildings) round-robins the
+        # player's individual buildings of that source proto across the target
+        # list so they split as evenly as possible instead of all becoming one.
+        _entries = []  # list of (scenId, targetPlayer, fromProto, [targets])
         for _sid, _vgod in sorted(_vanilla_gods2.items()):
             _rgod = ctx.god_assignments.get(_sid, _vgod)
             _vc   = _GOD_TO_CIV.get(_vgod, "Greek")
@@ -915,24 +917,31 @@ def write_aom_state(ctx: AoMGameContext) -> None:
             _players = _BLDG_PLAYER_OVERRIDE.get(_sid, [1])
             for _tp in _players:
                 for _from in _CLASSICAL_BLDGS[_vc]:
-                    _to = _CLASSICAL_BLDGS[_rc]
-                    _pairs.append((_sid, _tp, _from, _to[0], _to[1] if len(_to)>1 else ""))
+                    _entries.append((_sid, _tp, _from, list(_CLASSICAL_BLDGS[_rc])))
                 for _from in _HEROIC_BLDGS[_vc]:
-                    _to = _HEROIC_BLDGS[_rc]
-                    _pairs.append((_sid, _tp, _from, _to[0], _to[1] if len(_to)>1 else ""))
+                    _entries.append((_sid, _tp, _from, list(_HEROIC_BLDGS[_rc])))
+        # Flatten target lists into gAPBldgToList; per-entry offset/count index it.
+        _flat = []
+        for (_sid, _tp, _fr, _tos) in _entries:
+            _flat.extend(_tos)
         # Size all arrays before assigning by index (XS requires this)
-        _xs(f"    gAPBldgScen   = new int({len(_pairs)}, 0);")
-        _xs(f"    gAPBldgPlayer = new int({len(_pairs)}, 1);")
-        _xs(f'    gAPBldgFrom   = new string({len(_pairs)}, "");')
-        _xs(f'    gAPBldgTo1    = new string({len(_pairs)}, "");')
-        _xs(f'    gAPBldgTo2    = new string({len(_pairs)}, "");')
-        for _i, (_sid, _tp, _fr, _t1, _t2) in enumerate(_pairs):
-            _xs(f'    gAPBldgScen[{_i}]    = {_sid};')
-            _xs(f'    gAPBldgPlayer[{_i}]  = {_tp};')
-            _xs(f'    gAPBldgFrom[{_i}]    = "{_fr}";')
-            _xs(f'    gAPBldgTo1[{_i}]     = "{_t1}";')
-            _xs(f'    gAPBldgTo2[{_i}]     = "{_t2}";')
-        _xs(f"    gAPBldgTransformCount = {len(_pairs)};")
+        _xs(f"    gAPBldgScen     = new int({len(_entries)}, 0);")
+        _xs(f"    gAPBldgPlayer   = new int({len(_entries)}, 1);")
+        _xs(f'    gAPBldgFrom     = new string({len(_entries)}, "");')
+        _xs(f"    gAPBldgToOffset = new int({len(_entries)}, 0);")
+        _xs(f"    gAPBldgToCount  = new int({len(_entries)}, 0);")
+        _xs(f'    gAPBldgToList   = new string({max(len(_flat), 1)}, "");')
+        _off = 0
+        for _i, (_sid, _tp, _fr, _tos) in enumerate(_entries):
+            _xs(f'    gAPBldgScen[{_i}]     = {_sid};')
+            _xs(f'    gAPBldgPlayer[{_i}]   = {_tp};')
+            _xs(f'    gAPBldgFrom[{_i}]     = "{_fr}";')
+            _xs(f'    gAPBldgToOffset[{_i}] = {_off};')
+            _xs(f'    gAPBldgToCount[{_i}]  = {len(_tos)};')
+            for _j, _t in enumerate(_tos):
+                _xs(f'    gAPBldgToList[{_off + _j}] = "{_t}";')
+            _off += len(_tos)
+        _xs(f"    gAPBldgTransformCount = {len(_entries)};")
     _xs("}")
 
     # Set APUpdateBldgs quest var in APShopStateInit so archipelago.xs knows option state

@@ -45,8 +45,10 @@
 #   * New campaign:  add a `_maybe_set` line for its menu→region entrance in
 #                    `set_section_rules`, with the appropriate Campaign item
 #                    or unconditional access.
-#   * New item type that should count toward the points gate: extend
-#                    `_BASE_POINTS` with the new dataclass type.
+#   * New item type that should count toward the points gate: classify it in
+#                    the static score tables (`_GENERIC_PTS` / `_UNIT_SCORE` /
+#                    `_AGE_CIV` / `_HERO_SCORE` / `_RELIC_EFFECT_NAMES`) built
+#                    near `count_points`.
 #   * New age-cap behavior: write a `_make_*_scenario_rule` factory and
 #                    dispatch to it from `set_scenario_age_and_point_rules`.
 # =============================================================================
@@ -72,6 +74,8 @@ from ..items.Items import (
     HeroStatBoostFiller,
     PassiveIncome,
     PassiveIncomeLarge,
+    RelicEffect,
+    RelicTrickle,
     StartingArmy,
     StartingArmyUseful,
     StartingResources,
@@ -200,7 +204,7 @@ except AttributeError:
 def count_civ_unlocks(state: CollectionState, player: int, unlock_names: list[str]) -> int:
     """Total number of progressive age unlock items the player has across the
     given civ's unlock-name list.  Used by per-scenario hard-floor checks
-    (e.g. scenario 32 needs 3 unlocks for the Wonder)."""
+    (e.g. scenario 2 needs 1 unlock to reach Classical)."""
     return sum(state.count(name, player) for name in unlock_names)
 
 
@@ -270,63 +274,63 @@ _CIV_UNLOCK_NAMES: dict[str, list[str]] = {
 #   point threshold to custom values below.
 _SCENARIO_DATA: dict[int, tuple[int, int, float, bool, bool]] = {
     1:  (1, 0,  0.0,  True,  False),  # no TC; always accessible
-    2:  (1, 1,  4.0,  False, False),  # reach Classical (1 advancement)
-    3:  (1, 1,  4.0,  False, False),  # reach Classical (1 advancement); custom points
-    4:  (2, 2, 16.0,  False, False),  # reach Heroic (1 advancement)
-    5:  (3, 3, 16.0,  False, False),  # reach Mythic (1 advancement)
-    6:  (3, 0,  9.0,  False, False),  # custom: no age floor
+    2:  (1, 1,  2.0,  False, False),  # reach Classical (1 advancement)
+    3:  (1, 1,  2.0,  False, False),  # reach Classical (1 advancement); custom points
+    4:  (2, 2, 8.0,  False, False),  # reach Heroic (1 advancement)
+    5:  (3, 3, 14.0,  False, False),  # reach Mythic (1 advancement); custom points
+    6:  (3, 0,  3.0,  False, False),  # custom: no age floor
     7:  (3, 0,  1.0,  False, False),  # special: no TC, no age req, points only
-    8:  (2, 2, 22.0,  False, False),  # reach Heroic (1 advancement); custom points
+    8:  (2, 2, 19.0,  False, False),  # reach Heroic (1 advancement); custom points
     9:  (4, 0,  0.0,  True,  False),  # always accessible
     10: (1, 0,  0.0,  True,  False),  # always accessible
     11: (1, 0,  0.0,  True,  False),  # always accessible
-    12: (1, 2,  9.0,  False, False),  # Archaic+Mythic -> reach Heroic (2 advancements); custom points
-    13: (3, 0,  6.0,  False, False),  # custom: no age floor + points
-    14: (3, 0,  9.0,  False, True),   # myth-only; custom: no age floor
-    15: (2, 2, 16.0,  False, False),  # reach Heroic (1 advancement)
+    12: (1, 2,  4.0,  False, False),  # Archaic+Mythic -> reach Heroic (2 advancements); custom points
+    13: (3, 0,  3.0,  False, False),  # custom: no age floor + points
+    14: (3, 0,  4.0,  False, True),   # myth-only; custom: no age floor
+    15: (2, 2, 14.0,  False, False),  # reach Heroic (1 advancement); custom points
     16: (4, 0,  0.0,  True,  False),  # always accessible
-    17: (3, 3, 16.0,  False, False),  # reach Mythic (1 advancement)
-    18: (2, 2, 16.0,  False, False),  # reach Heroic (1 advancement)
-    19: (3, 0, 16.0,  False, False),  # custom: no age floor
-    20: (3, 3, 22.0,  False, False),  # reach Mythic (1 advancement); custom points
-    21: (2, 2,  9.0,  False, False),  # reach Heroic (1 advancement); custom points
-    22: (1, 1,  4.0,  False, False),  # reach Classical (1 advancement); custom points
-    23: (2, 2, 20.0,  False, False),  # reach Heroic (1 advancement); custom points
-    24: (2, 2,  2.0,  False, False),  # reach Heroic (1 advancement); custom points
+    17: (3, 3, 8.0,  False, False),  # reach Mythic (1 advancement)
+    18: (2, 2, 12.0,  False, False),  # reach Heroic (1 advancement)
+    19: (3, 0, 6.0,  False, False),  # custom: no age floor
+    20: (3, 3, 20.0,  False, False),  # reach Mythic (1 advancement); custom points
+    21: (2, 2,  4.0,  False, False),  # reach Heroic (1 advancement); custom points
+    22: (1, 1,  2.0,  False, False),  # reach Classical (1 advancement); custom points
+    23: (2, 2, 12.0,  False, False),  # reach Heroic (1 advancement); custom points
+    24: (2, 2,  1.0,  False, False),  # reach Heroic (1 advancement); custom points
     25: (1, 0,  0.0,  True,  False),  # no TC; always accessible
-    26: (2, 2,  6.0,  False, False),  # reach Heroic (1 advancement); custom points
-    27: (2, 2, 20.0,  False, False),  # reach Heroic (1 advancement); custom points
-    28: (3, 0,  6.0,  False, False),  # custom: no age floor + points
+    26: (2, 2,  2.0,  False, False),  # reach Heroic (1 advancement); custom points
+    27: (2, 2, 12.0,  False, False),  # reach Heroic (1 advancement); custom points
+    28: (3, 0,  2.0,  False, False),  # custom: no age floor + points
     29: (2, 0,  0.0,  True,  False),  # always accessible
-    30: (2, 2, 24.0,  False, False),  # reach Heroic (1 advancement); custom points
-    31: (3, 3, 21.0,  False, False),  # reach Mythic (1 advancement); custom points
-    32: (3, 3, 25.0,  False, False),  # reach Mythic (1 advancement); custom points
+    30: (2, 2, 20.0,  False, False),  # reach Heroic (1 advancement); custom points
+    31: (3, 3, 20.0,  False, False),  # reach Mythic (1 advancement); custom points
+    32: (3, 3, 18.0,  False, False),  # reach Mythic (1 advancement); custom points
     # ---------------------------------------------------------------------------
     # New Atlantis (APScenarioIDs 501-512)
     # Age-capped (501,503,504,505,511,512) and exempt (506,507) scenarios ignore
     # min_required_unlocks; only points_needed gates them.
     # ---------------------------------------------------------------------------
-    501: (3, 0,  9.0, False, False),  # age-capped @Heroic; custom points
-    502: (1, 1,  4.0, False, False),  # reach Classical (1 advancement)
+    501: (3, 0,  4.0, False, False),  # age-capped @Heroic; custom points
+    502: (1, 1,  2.0, False, False),  # reach Classical (1 advancement)
     503: (3, 0,  0.0, False, False),  # age-capped @Heroic, NO TC
-    504: (3, 0, 20.0, False, False),  # age-capped @Heroic; custom points
-    505: (3, 0, 16.0, False, False),  # age-capped @Heroic
+    504: (3, 0, 14.0, False, False),  # age-capped @Heroic; custom points
+    505: (3, 0, 8.0, False, False),  # age-capped @Heroic
     506: (4, 0,  0.0, True,  False),  # Mythic start, NO TC — always accessible
     507: (3, 0,  0.0, True,  False),  # always accessible — sphere 1
-    508: (3, 0, 16.0, False, False),  # custom: no age floor
-    509: (3, 0,  2.0, False, False),  # custom: no age floor + points
-    510: (3, 3, 16.0, False, False),  # reach Mythic (1 advancement)
-    511: (4, 0, 21.0, False, False),  # age-capped @Mythic; custom points
-    512: (4, 0,  9.0, False, False),  # age-capped @Mythic; custom points
+    508: (3, 0, 8.0, False, False),  # custom: no age floor
+    509: (3, 0,  1.0, False, False),  # custom: no age floor + points
+    510: (3, 3, 8.0, False, False),  # reach Mythic (1 advancement)
+    511: (4, 0, 10.0, False, False),  # age-capped @Mythic; custom points
+    512: (4, 0,  4.0, False, False),  # age-capped @Mythic; custom points
     # ---------------------------------------------------------------------------
     # The Golden Gift (APScenarioIDs 601-604)
     # 601,602 age-capped @Heroic; 603 heroic-floor (Mythic via 3 unlocks);
     # 604 points-only gate (was always-accessible).
     # ---------------------------------------------------------------------------
-    601: (3, 0,  9.0,  False, False),  # age-capped @Heroic; custom points
-    602: (3, 0,  4.0,  False, False),  # age-capped @Heroic
-    603: (3, 0, 16.0,  False, False),  # heroic-floor; custom points
-    604: (4, 0,  2.0,  False, False),  # points-only gate (custom; no longer exempt)
+    601: (3, 0,  7.0,  False, False),  # age-capped @Heroic; custom points
+    602: (3, 0,  2.0,  False, False),  # age-capped @Heroic
+    603: (3, 0, 10.0,  False, False),  # heroic-floor; custom points
+    604: (4, 0,  1.0,  False, False),  # points-only gate (custom; no longer exempt)
 }
 
 _VANILLA_CIV: dict[int, str] = {
@@ -535,93 +539,259 @@ def _excluded_myth_items(floor_minor_god_techs) -> frozenset:
 # Point scoring system
 # --------------------------------------------------
 
-_BASE_POINTS: dict[type, float] = {
-    AgeUnlock:              1.0,   # small contribution to bootstrap early fill chain
-    Campaign:               0.0,
-    FinalUnlock:            0.0,
-    UnitUnlockProgression:  3.0,
-    UnitUnlockUseful:       3.0,
-    MythUnitUnlockProgression: 5.0,
-    MythUnitUnlockUseful:      5.0,
-    MythUnitUnlockFiller:      5.0,
-    StartingResources:      1.0,
-    StartingResourcesLarge: 2.0,
-    PassiveIncome:          1.0,
-    PassiveIncomeLarge:     2.0,
-    StartingArmy:          1.0,
-    StartingArmyUseful:    2.0,
-    HeroStatBoostFiller:    1.0,
-    HeroStatBoost:          2.0,
-    HeroSpecialEffect:      2.0,
-    HeroActionBoost:        2.0,
-    ArkantosHousing:        2.0,
+# Points are SCENARIO-AWARE: an item only contributes points to a scenario if
+# the player can actually use it there.
+#
+#   * Generic items (resources, passive income, starting armies) — always count.
+#   * Civ items (trainable human/myth units, age unlocks) — only when the item's
+#     civ matches the scenario's assigned civ; unit items additionally require
+#     the player to be able to reach that unit's age tier in this scenario.
+#   * Hero items — only when that hero appears in the scenario (roster +
+#     "Joins the Campaign" items + Chiron-didn't-die + Ajax/Amanra Dreams).
+#   * Relic-effect items — 0.2 per relic present in the scenario (0 if none).
+#   * Progressive Wonder — 3 pts once the player can build wonders anywhere/any
+#     age (>= tier 5); otherwise 0.
+#   * Titans — handled in the rule factories via `_titan_buildable` (+10), which
+#     already gates on civ + Mythic reachability + town centre.
+
+_WONDER_ITEM_NAME    = aomItemData.PROGRESSIVE_WONDER.item_name
+_DREAMS_ITEM_NAME    = aomItemData.AJAX_AMANRA_DREAMS.item_name
+_CHIRON_DIDNT_DIE_NAME = aomItemData.CHIRON_DIDNT_DIE.item_name
+_WONDER_ANYWHERE_ANYAGE_TIER = 5   # ProgressiveWonder copies for anywhere + any age
+
+# Mythic-age myth-unit protos (mirror __init__.py) — starting-army items that
+# spawn one of these are worth 3 points.
+_MYTHIC_MYTH_STARTING_ARMY_PROTOS = frozenset({
+    "FireGiant", "Siren", "Lampades", "Phoenix", "Colossus",
+    "QingLong", "Umibozu", "Ahuizotl",
+})
+
+# "Joins the Campaign" item -> hero it makes present in EVERY scenario.
+_JOINS_ITEM_HERO = {
+    aomItemData.KASTOR_JOINS.item_name:    "Kastor",
+    aomItemData.REGINLEIF_JOINS.item_name: "Reginleif",
+    aomItemData.ODYSSEUS_JOINS.item_name:  "Odysseus",
 }
 
-if _ATLANTEAN_TYPES:
-    _BASE_POINTS[AtlanteanUnitUnlockProgression] = 3.0
-    _BASE_POINTS[AtlanteanUnitUnlockUseful]      = 3.0
-    _BASE_POINTS[AtlanteanMythUnitUnlock]        = 5.0
-
-_BASE_POINTS[ChineseUnitUnlockProgression]  = 3.0
-_BASE_POINTS[ChineseUnitUnlockUseful]       = 3.0
-_BASE_POINTS[ChineseMythUnitUnlock]         = 5.0
-_BASE_POINTS[JapaneseUnitUnlockProgression] = 3.0
-_BASE_POINTS[JapaneseUnitUnlockUseful]      = 3.0
-_BASE_POINTS[JapaneseMythUnitUnlock]        = 5.0
-_BASE_POINTS[AztecUnitUnlockProgression]    = 3.0
-_BASE_POINTS[AztecUnitUnlockUseful]         = 3.0
-_BASE_POINTS[AztecMythUnitUnlock]           = 5.0
-
-
-def _item_point_value(item: aomItemData) -> float:
-    """Score an item for the per-scenario points gate.
-
-    Reginleif/Odysseus "Joins" items are special-cased high (4.0) because
-    they grant a hero immediately on receipt and substantially boost combat.
-
-    Hero stat/action/special boosts are scaled by the hero's relative usefulness:
-      Arkantos        : x2.0 (always present in FotT, gets the most mileage)
-      Odysseus/Reginleif: x0.5 (only present in 1-2 scenarios)
-      Other heroes      : x1.0
-    """
-    if item == aomItemData.REGINLEIF_JOINS or item == aomItemData.ODYSSEUS_JOINS:
-        return 4.0
-    if item == aomItemData.AJAX_AMANRA_DREAMS:
-        return 0.0
-
-    base = _BASE_POINTS.get(item.type_data, 0.0)
-    if base == 0.0:
-        return 0.0
-
-    hero_types = (HeroStatBoostFiller, HeroStatBoost, HeroSpecialEffect, HeroActionBoost)
-    if not isinstance(item.type, hero_types):
-        return base
-
-    hero = item.type.hero
-    if hero == "Arkantos":
-        return base * 2.0
-    elif hero in ("OdysseusSPC", "Reginleif"):
-        return base * 0.5
-    return base
+# Base per-scenario hero roster (which heroes appear by default).
+_HERO_ROSTER: dict[str, frozenset] = {
+    "Arkantos":  frozenset(set(range(1, 33)) - {17, 18}),
+    "Ajax":      frozenset((set(range(1, 33)) - {1, 2, 16, 17, 18, 32})
+                           | set(range(507, 513))),                 # +NA 7-12; fott 32 via Dreams
+    "Chiron":    frozenset({8, 9, 10, 11, 12, 13, 14, 15, 18, 20,
+                            22, 23, 24, 25, 26, 27, 28}),           # +29-32 via Chiron-didn't-die
+    "Amanra":    frozenset({11, 12, 13, 14, 15, 17, 20, 22, 23, 24,
+                            25, 26, 27, 28, 29, 30, 31}
+                           | set(range(507, 513))),                 # +NA 7-12
+    "Odysseus":  frozenset({4, 5, 6, 30, 31}),
+    "Reginleif": frozenset({26, 27, 28, 29}),
+    "Kastor":    frozenset(set(range(501, 513)) - {507}),           # all NA except NA 7
+}
 
 
-def build_point_table() -> dict[str, float]:
-    """Build {item_name: points} for every item in the catalog.  Computed once
-    per `set_rules` invocation and passed to every per-scenario rule so the
-    per-call cost is just dict lookups."""
-    return {item.item_name: _item_point_value(item) for item in aomItemData}
+def _canon_hero(h: str) -> str:
+    """Map a hero proto (e.g. "AjaxSPC") to its canonical roster key ("Ajax")."""
+    return h[:-3] if h.endswith("SPC") else h
 
 
-def count_points(state: CollectionState, player: int, point_table: dict[str, float]) -> float:
-    """Sum of points across all items the player currently has.  AP calls
-    this many times during fill, so it's optimized to skip 0-valued items."""
+# Relic locations present per scenario (static; relic-effect points scale by this).
+_RELIC_COUNT_BY_SCENARIO: dict[int, int] = {}
+for _loc in aomLocationData:
+    if _loc.type == aomLocationType.RELIC:
+        _n = _loc.scenario.global_number
+        _RELIC_COUNT_BY_SCENARIO[_n] = _RELIC_COUNT_BY_SCENARIO.get(_n, 0) + 1
+
+
+# -------- static per-item score tables, built once at import --------
+_GENERIC_PTS: dict[str, float]   = {}   # item_name -> pts (always counted)
+_UNIT_SCORE:  dict[str, tuple]   = {}   # item_name -> (civ, tier, pts, is_human)
+_AGE_CIV:     dict[str, str]     = {}   # item_name -> civ (1 pt, civ-conditional)
+_HERO_SCORE:  dict[str, tuple]   = {}   # item_name -> (hero, pts)  presence-conditional
+_RELIC_EFFECT_NAMES: set         = set()
+
+# Civ + tier for every trainable-unit unlock item, from the authoritative
+# logic maps (human = 3 pts, myth = 5 pts).
+for _civ, _tiers in _HUMAN_UNITS.items():
+    for _tier, _names in _tiers.items():
+        for _nm in _names:
+            _UNIT_SCORE[_nm] = (_civ, _tier, 3.0, True)
+for _civ, _tiers in _MYTH_ITEMS_BY_UNLOCK.items():
+    for _tier, _nm in _tiers.items():
+        _UNIT_SCORE[_nm] = (_civ, _tier, 4.0, False)
+
+# Age-unlock items: 1 pt, only for the matching civ.
+for _civ, _names in _CIV_UNLOCK_NAMES.items():
+    for _nm in _names:
+        _AGE_CIV[_nm] = _civ
+
+
+def _hero_item_points(item) -> float:
+    """Flat point value for a hero item under the new scheme (no per-hero
+    multipliers).  Housing/manor = 1; small HP/attack boosts = 0; other stat
+    boosts keep their tier base (filler 1, useful 2); specials/actions = 2."""
+    t = item.type
+    if isinstance(t, ArkantosHousing):
+        return 1.0
+    if isinstance(t, (HeroSpecialEffect, HeroActionBoost)):
+        return 2.0
+    if isinstance(t, HeroStatBoost):   # covers HeroStatBoostFiller (subclass)
+        stat = getattr(t, "stat", "")
+        amt  = abs(getattr(t, "amount", 0))
+        small_hp  = (stat == "Hitpoints" and amt <= 25)
+        small_atk = (stat in ("HandAttack", "RangedAttack") and amt <= 1)
+        if small_hp or small_atk:
+            return 0.0
+        return 1.0 if isinstance(t, HeroStatBoostFiller) else 2.0
+    return 0.0
+
+
+_HOUSING_HERO = {
+    aomItemData.ARKANTOS_HOUSING.item_name: "Arkantos",
+    aomItemData.KASTOR_IS_A_MANOR.item_name: "Kastor",
+}
+
+_HERO_TYPES = (HeroStatBoost, HeroStatBoostFiller, HeroSpecialEffect,
+               HeroActionBoost, ArkantosHousing)
+
+for _it in aomItemData:
+    _t = _it.type
+    _nm = _it.item_name
+    if isinstance(_t, _HERO_TYPES):
+        if isinstance(_t, ArkantosHousing):
+            _hero = _HOUSING_HERO.get(_nm, "Arkantos")
+        else:
+            _hero = _canon_hero(getattr(_t, "hero", ""))
+        _HERO_SCORE[_nm] = (_hero, _hero_item_points(_it))
+    elif isinstance(_t, (RelicEffect, RelicTrickle)):
+        _RELIC_EFFECT_NAMES.add(_nm)
+    elif isinstance(_t, StartingResourcesLarge):
+        _GENERIC_PTS[_nm] = 1.0
+    elif isinstance(_t, StartingResources):
+        _GENERIC_PTS[_nm] = 0.0                       # small resources: 0
+    elif isinstance(_t, PassiveIncomeLarge):
+        _GENERIC_PTS[_nm] = 2.0
+    elif isinstance(_t, PassiveIncome):
+        _GENERIC_PTS[_nm] = 1.0
+    elif isinstance(_t, (StartingArmy, StartingArmyUseful)):
+        _proto = getattr(_t, "unit_name", "") or ""
+        if _proto in _MYTHIC_MYTH_STARTING_ARMY_PROTOS:
+            _GENERIC_PTS[_nm] = 3.0                    # Mythic myth starting army
+        else:
+            _GENERIC_PTS[_nm] = 2.0 if isinstance(_t, StartingArmyUseful) else 1.0
+
+# Ajax & Amanra "Dreams" is a StartingArmyUseful by type, but scores specially:
+# +2 to scenario 32 only (handled in count_points), never as a generic item.
+_GENERIC_PTS.pop(_DREAMS_ITEM_NAME, None)
+
+
+class _ScoreCtx:
+    """Per-scenario scoring context.  Cheap to build; reused across the many
+    rule evaluations AP runs during fill."""
+    __slots__ = ("n", "civ", "start_tier", "unlock_names",
+                 "relic_count", "base_heroes", "exclude_human")
+
+    def __init__(self, n, civ, start_tier, unlock_names,
+                 relic_count, base_heroes, exclude_human=False):
+        self.n             = n
+        self.civ           = civ
+        self.start_tier    = start_tier
+        self.unlock_names  = unlock_names
+        self.relic_count   = relic_count
+        self.base_heroes   = base_heroes
+        self.exclude_human = exclude_human
+
+
+def build_score_ctx(scenario_n: int, god_civ: str, start_age_num: int,
+                    exclude_human: bool = False) -> _ScoreCtx:
+    start_tier = max(0, start_age_num - 1)
+    base = frozenset(h for h, scs in _HERO_ROSTER.items() if scenario_n in scs)
+    return _ScoreCtx(
+        scenario_n, god_civ, start_tier,
+        _CIV_UNLOCK_NAMES.get(god_civ, []),
+        _RELIC_COUNT_BY_SCENARIO.get(scenario_n, 0),
+        base, exclude_human,
+    )
+
+
+def _heroes_present(state: CollectionState, player: int, ctx: "_ScoreCtx") -> set:
+    heroes = set(ctx.base_heroes)
+    for jname, hero in _JOINS_ITEM_HERO.items():
+        if state.has(jname, player):
+            heroes.add(hero)
+    if ctx.n in (29, 30, 31, 32) and state.has(_CHIRON_DIDNT_DIE_NAME, player):
+        heroes.add("Chiron")
+    if ctx.n == 32 and state.has(_DREAMS_ITEM_NAME, player):
+        heroes.add("Ajax")
+        heroes.add("Amanra")
+    return heroes
+
+
+def count_points(state: CollectionState, player: int, ctx: "_ScoreCtx") -> float:
+    """Scenario-aware point total: only items usable in `ctx`'s scenario count.
+    AP calls this many times during fill, so it skips zero-valued entries."""
     total = 0.0
-    for item_name, value in point_table.items():
-        if value > 0.0:
-            count = state.count(item_name, player)
-            if count > 0:
-                total += count * value
+
+    # Generic — always counted.
+    for name, pts in _GENERIC_PTS.items():
+        if pts:
+            c = state.count(name, player)
+            if c:
+                total += c * pts
+
+    # Civ trainable units — civ must match AND the unit's age must be reachable.
+    reach = min(3, max(ctx.start_tier,
+                       min(sum(state.count(n, player) for n in ctx.unlock_names), 3)))
+    for name, (civ, tier, pts, is_human) in _UNIT_SCORE.items():
+        if civ != ctx.civ or tier > reach:
+            continue
+        if ctx.exclude_human and is_human:
+            continue
+        c = state.count(name, player)
+        if c:
+            total += c * pts
+
+    # Age unlocks — civ-conditional, 1 pt each.
+    for name, civ in _AGE_CIV.items():
+        if civ == ctx.civ:
+            c = state.count(name, player)
+            if c:
+                total += c * 1.0
+
+    # Hero items — only when the hero appears in this scenario.
+    heroes = _heroes_present(state, player, ctx)
+    for name, (hero, pts) in _HERO_SCORE.items():
+        if pts and hero in heroes:
+            c = state.count(name, player)
+            if c:
+                total += c * pts
+
+    # Relic-effect items — 0.2 per relic present in the scenario.
+    if ctx.relic_count > 0:
+        for name in _RELIC_EFFECT_NAMES:
+            c = state.count(name, player)
+            if c:
+                total += c * 0.2 * ctx.relic_count
+
+    # Progressive Wonder — 3 pts once buildable anywhere / any age.
+    if state.count(_WONDER_ITEM_NAME, player) >= _WONDER_ANYWHERE_ANYAGE_TIER:
+        total += 3.0
+
+    # Ajax & Amanra "Dreams" — +2 to scenario 32 only.
+    if ctx.n == 32 and state.has(_DREAMS_ITEM_NAME, player):
+        total += 2.0
+
     return total
+
+
+def _trap_scaled_points(points_needed: float, trap_percentage: int) -> float:
+    """Reduce a scenario's point requirement when the player opts into heavy
+    traps.  No change at trap_percentage <= 50; a linear ("even") reduction
+    above that reaching HALF at 100 (factor 1.0 -> 0.5 over 50..100).  The
+    result is floored.  Players who crank traps up trade points for danger."""
+    if trap_percentage <= 50 or points_needed <= 0:
+        return points_needed
+    factor = 1.0 - (min(trap_percentage, 100) - 50) / 100.0   # 0.75 @75, 0.5 @100
+    return float(int(points_needed * factor))                 # int() == floor for >= 0
 
 
 # --------------------------------------------------
@@ -657,7 +827,7 @@ def _make_age_capped_scenario_rule(
     player: int,
     god_id: int,
     max_tier: int,
-    point_table: dict[str, float],
+    score_ctx: "_ScoreCtx",
     points_needed: float,
     scenario_n: int = 0,
     excluded_myth: frozenset = frozenset(),
@@ -677,7 +847,7 @@ def _make_age_capped_scenario_rule(
 
     def rule(state: CollectionState) -> bool:
         can_titan = _titan_buildable(state, player, god_civ, max_tier >= 3, has_tc)
-        points = count_points(state, player, point_table)
+        points = count_points(state, player, score_ctx)
         if can_titan:
             points += _TITAN_POINTS
         if points < points_needed:
@@ -700,7 +870,7 @@ def _make_age_capped_scenario_rule(
 def _make_heroic_floor_scenario_rule(
     player: int,
     god_id: int,
-    point_table: dict[str, float],
+    score_ctx: "_ScoreCtx",
     points_needed: float,
     scenario_n: int = 0,
     excluded_myth: frozenset = frozenset(),
@@ -721,7 +891,7 @@ def _make_heroic_floor_scenario_rule(
     def rule(state: CollectionState) -> bool:
         unlock_count = min(sum(state.count(n, player) for n in unlock_names), 3)
         can_titan = _titan_buildable(state, player, god_civ, unlock_count >= 3, has_tc)
-        points = count_points(state, player, point_table)
+        points = count_points(state, player, score_ctx)
         if can_titan:
             points += _TITAN_POINTS
         if points < points_needed:
@@ -763,10 +933,11 @@ def _make_scenario_rule(
     start_age_num: int,
     min_required_unlocks: int,
     is_myth_only: bool,
-    point_table: dict[str, float],
+    score_ctx: "_ScoreCtx",
     points_needed: float,
     scenario_n: int = 0,
     excluded_myth: frozenset = frozenset(),
+    wonder_anyage_alt: bool = False,
 ):
     """Build the access rule for a scenario.
 
@@ -808,11 +979,20 @@ def _make_scenario_rule(
     def rule(state: CollectionState) -> bool:
         unlock_count = min(sum(state.count(n, player) for n in unlock_names), MAX_AGE_TIERS)
 
+        # Wonder alternative (scenario 32): with enough Progressive Wonder items
+        # the player can build the Wonder in any age, so the Mythic age floor
+        # is not required.  Wonder is a `useful` item, so this only ever ADDS an
+        # alternative path — the age-unlock branch (progression) keeps the rule
+        # satisfiable, so Fill never depends on the useful item.
+        wonder_ok = wonder_anyage_alt and (
+            state.count(_WONDER_ITEM_NAME, player) >= _WONDER_ANYWHERE_ANYAGE_TIER
+        )
+
         # A buildable Titan (town centre + Mythic reachable + civ Titan item)
         # counts as a trainable unit and adds _TITAN_POINTS to the points gate.
         can_titan = _titan_buildable(state, player, god_civ, unlock_count >= 3, has_tc)
 
-        points = count_points(state, player, point_table)
+        points = count_points(state, player, score_ctx)
         if can_titan:
             points += _TITAN_POINTS
         if points < points_needed:
@@ -822,7 +1002,8 @@ def _make_scenario_rule(
         # Player must be able to reach at least the vanilla max age.
         # Applied before unit checks so a player with Classical myths and
         # 0 unlocks cannot enter a Heroic-floor scenario like scenario 24.
-        if unlock_count < min_required_unlocks:
+        # wonder_ok bypasses the floor (scenario 32: Wonder buildable any age).
+        if unlock_count < min_required_unlocks and not wonder_ok:
             return False
 
         # A Titan satisfies the military-unit requirement (myth-only too — it
@@ -863,37 +1044,6 @@ def _make_scenario_rule(
         return False
 
     return rule
-
-
-def _human_unit_item_names() -> set:
-    """Set of item names for human (non-myth) unit unlocks across every civ.
-    Used by the scenario-7 points rule, which excludes human-unit items from
-    its point total.  Shared between the generation rule and the client-side
-    in-logic replica so the two never drift."""
-    human_unit_types = (UnitUnlockProgression, UnitUnlockUseful)
-    if _ATLANTEAN_TYPES:
-        human_unit_types = human_unit_types + (
-            AtlanteanUnitUnlockProgression, AtlanteanUnitUnlockUseful
-        )
-    human_unit_types = human_unit_types + (
-        ChineseUnitUnlockProgression, ChineseUnitUnlockUseful,
-        JapaneseUnitUnlockProgression, JapaneseUnitUnlockUseful,
-        AztecUnitUnlockProgression, AztecUnitUnlockUseful,
-    )
-    return {
-        item.item_name for item in aomItemData
-        if isinstance(item.type, human_unit_types)
-    }
-
-
-def _scenario7_effective_table(point_table: dict[str, float]) -> dict[str, float]:
-    """Copy of `point_table` with every human-unit item zeroed — scenario 7's
-    points gate ignores human-unit unlocks."""
-    names = _human_unit_item_names()
-    return {
-        name: (0.0 if name in names else val)
-        for name, val in point_table.items()
-    }
 
 
 def _get_scenario_god(world, scenario_n: int) -> int:
@@ -941,6 +1091,7 @@ def compute_scenarios_in_logic(
     disabled_campaign_ids: set = frozenset(),
     player: int = 1,
     minor_god_assignments: dict = None,
+    trap_percentage: int = 0,
 ) -> dict[int, bool]:
     """Replay gates 1-5 for every scenario without a multiworld and return
     `{global_number: in_logic}`.
@@ -963,8 +1114,6 @@ def compute_scenarios_in_logic(
         disabled_campaign_ids:   campaign.id ints to skip.
     """
     state       = _DictState(received_counts)
-    point_table = build_point_table()
-    eff7        = _scenario7_effective_table(point_table)
     minor_god_assignments = minor_god_assignments or {}
     result: dict[int, bool] = {}
 
@@ -976,6 +1125,7 @@ def compute_scenarios_in_logic(
         if data is None:
             continue
         start_age_num, min_required_unlocks, points_needed, is_exempt, is_myth_only = data
+        points_needed = _trap_scaled_points(points_needed, trap_percentage)
 
         # Gate 1 — section / Final unlock.
         if not campaign_unlocked_by_id.get(scenario.campaign.id, False):
@@ -998,10 +1148,11 @@ def compute_scenarios_in_logic(
         god_civ      = _GOD_TO_CIV.get(god_id, "Greek")
         unlock_names = _CIV_UNLOCK_NAMES[god_civ]
         excl         = _excluded_myth_items(minor_god_assignments.get(n, []))
+        ctx          = build_score_ctx(n, god_civ, start_age_num)
 
         if n in _SCENARIO_AGE_CAP:
             rule = _make_age_capped_scenario_rule(
-                player, god_id, _SCENARIO_AGE_CAP[n], point_table, points_needed,
+                player, god_id, _SCENARIO_AGE_CAP[n], ctx, points_needed,
                 scenario_n=n, excluded_myth=excl,
             )
             result[n] = rule(state)
@@ -1009,24 +1160,25 @@ def compute_scenarios_in_logic(
 
         if n in _SCENARIO_HEROIC_FLOOR:
             rule = _make_heroic_floor_scenario_rule(
-                player, god_id, point_table, points_needed,
+                player, god_id, ctx, points_needed,
                 scenario_n=n, excluded_myth=excl,
             )
             result[n] = rule(state)
             continue
 
         if n == 604:
-            result[n] = count_points(state, player, point_table) >= points_needed
+            result[n] = count_points(state, player, ctx) >= points_needed
             continue
 
         if n == 7:
-            result[n] = count_points(state, player, eff7) >= points_needed
+            ctx7 = build_score_ctx(n, god_civ, start_age_num, exclude_human=True)
+            result[n] = count_points(state, player, ctx7) >= points_needed
             continue
 
         rule = _make_scenario_rule(
             player, god_id, _VANILLA_CIV[n],
             start_age_num, min_required_unlocks, is_myth_only,
-            point_table, points_needed,
+            ctx, points_needed,
             scenario_n=n, excluded_myth=excl,
         )
         ok = rule(state)
@@ -1132,7 +1284,7 @@ def set_section_rules(world) -> None:
 # Per-scenario military + point rules
 # --------------------------------------------------
 
-def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> None:
+def set_scenario_age_and_point_rules(world) -> None:
     """Apply per-scenario age/military/points access rules to every
     section→scenario entrance.
 
@@ -1144,18 +1296,18 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
       * everything else — uses `_make_scenario_rule` with min_required_unlocks
         and points gates pulled from `_SCENARIO_DATA`.
 
-    Two scenarios get hard-floor add_rules layered on top:
+    Hard-floor / alternative rules layered on top:
       * scenario 2: needs at least 1 unlock (Advance to Classical objective)
-      * scenario 32: needs 3 unlocks (must reach Mythic to build the Wonder)
+      * scenario 32: needs Mythic (3 unlocks) to build the Wonder, OR ≥5
+        Progressive Wonder items to build it in any age (wonder_anyage_alt).
 
     Args:
         world:        the aomWorld
-        point_table:  output of `build_point_table()` — passed in to avoid
-                      rebuilding it per-scenario.
     """
     player    = world.player
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
+    trap_pct = int(getattr(world.options, "trap_percentage").value)
 
     section_names = {
         "Greek":       "Fall of the Trident: Greek",
@@ -1180,6 +1332,7 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
             continue
         n = scenario.global_number
         start_age_num, min_required_unlocks, points_needed, is_exempt, is_myth_only = _SCENARIO_DATA[n]
+        points_needed = _trap_scaled_points(points_needed, trap_pct)
 
         if is_exempt:
             continue
@@ -1191,6 +1344,7 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
         excl = _excluded_myth_items(
             getattr(world, "minor_god_assignments", {}).get(n, [])
         )
+        ctx = build_score_ctx(n, god_civ, start_age_num)
 
         ent_name = entrance_name(section_for(n), scenario.region_name)
         entrance = multiworld.get_entrance(ent_name, player)
@@ -1199,7 +1353,7 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
         # All units up to the capped tier are freely accessible without unlock items.
         if n in _SCENARIO_AGE_CAP:
             add_rule(entrance, _make_age_capped_scenario_rule(
-                player, god_id, _SCENARIO_AGE_CAP[n], point_table, points_needed,
+                player, god_id, _SCENARIO_AGE_CAP[n], ctx, points_needed,
                 scenario_n=n, excluded_myth=excl,
             ))
             continue
@@ -1208,40 +1362,40 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
         # but Mythic (tier 3) still requires 3 age unlock items.
         if n in _SCENARIO_HEROIC_FLOOR:
             add_rule(entrance, _make_heroic_floor_scenario_rule(
-                player, god_id, point_table, points_needed,
+                player, god_id, ctx, points_needed,
                 scenario_n=n, excluded_myth=excl,
             ))
             continue
 
-        # Scenario 604: points-only gate (no age/military requirement) using the
-        # full point table.  Formerly exempt (always accessible).
+        # Scenario 604: points-only gate (no age/military requirement).
+        # Formerly exempt (always accessible).
         if n == 604:
             add_rule(entrance,
-                lambda state, p=points_needed:
-                    count_points(state, player, point_table) >= p
+                lambda state, c=ctx, p=points_needed:
+                    count_points(state, player, c) >= p
             )
             continue
 
         # Scenario 7: human unit unlocks don't count toward points,
-        # no age or military unit unlock required — just 1 point of non-unit items.
+        # no age or military unit unlock required — just points of non-unit items.
         if n == 7:
-            effective_table = _scenario7_effective_table(point_table)
+            ctx7 = build_score_ctx(n, god_civ, start_age_num, exclude_human=True)
             add_rule(entrance,
-                lambda state, t=effective_table, p=points_needed:
-                    count_points(state, player, t) >= p
+                lambda state, c=ctx7, p=points_needed:
+                    count_points(state, player, c) >= p
             )
             continue
 
-        else:
-            effective_table = point_table
-
         # Age floor + military rule. min_required_unlocks is the vanilla max age
         # (a floor, not a cap — player can advance further with more unlocks).
+        # Scenario 32: the Mythic age floor exists only to build the Wonder, so
+        # wonder_anyage_alt lets ≥5 Progressive Wonder items satisfy it instead.
         add_rule(entrance, _make_scenario_rule(
             player, god_id, vanilla_civ,
             start_age_num, min_required_unlocks, is_myth_only,
-            effective_table, points_needed,
+            ctx, points_needed,
             scenario_n=n, excluded_myth=excl,
+            wonder_anyage_alt=(n == 32),
         ))
 
         # Hard requirement: scenario 2 needs at least 1 age unlock
@@ -1250,13 +1404,6 @@ def set_scenario_age_and_point_rules(world, point_table: dict[str, float]) -> No
             add_rule(entrance,
                 lambda state, un=unlock_names:
                     count_civ_unlocks(state, player, un) >= 1
-            )
-
-        # Hard requirement: scenario 32 needs 3 age unlocks (Mythic age for the Wonder)
-        if n == 32:
-            add_rule(entrance,
-                lambda state, un=unlock_names:
-                    count_civ_unlocks(state, player, un) >= 3
             )
 
 
@@ -1526,8 +1673,7 @@ def set_rules(world) -> None:
     """Top-level entry point — Archipelago calls this after create_regions /
     create_items.  Order matters:
 
-      1. build_point_table     — once, used by every scenario rule below.
-      2. exclude_scenario_32   — must run before any rule walks FOTT_32 locations.
+      1. exclude_scenario_32   — must run before any rule walks FOTT_32 locations.
       3. place_completion_events / place_gems / place_progressive_shop_info
          — forced placements; must run before AP's main fill so those slots
          are reserved.
@@ -1537,14 +1683,13 @@ def set_rules(world) -> None:
          their own sections.
       7. set_shop_rules        — only meaningful when gem_shop is on.
     """
-    point_table = build_point_table()
     exclude_scenario_32_locations(world)
     place_completion_events(world)
     place_gems(world)
     place_progressive_shop_info(world)
     place_shop_e_items(world)
     set_section_rules(world)
-    set_scenario_age_and_point_rules(world, point_table)
+    set_scenario_age_and_point_rules(world)
     set_scenario_key_rules(world)
     set_item_placement_restrictions(world)
     set_shop_rules(world)
@@ -1595,6 +1740,10 @@ def set_scenario_key_rules(world) -> None:
 
     for scenario in aomScenarioData:
         if scenario.campaign in disabled_campaigns:
+            continue
+        # FOTT_FINAL (31 & 32) is never gated by scenario keys — only by the
+        # final_scenarios option mechanism.
+        if scenario.campaign.name == "FOTT_FINAL":
             continue
         n   = scenario.global_number
         iid = scenario_to_item_id.get(n)

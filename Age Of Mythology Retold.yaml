@@ -90,7 +90,7 @@ Age Of Mythology Retold:
 
   wins_to_open_shop:
     # Number of scenario victories required to open each additional shop tier (only used when Gem Shop is enabled).
-    # Shop A (Marsh) is always open. Shop B (Desert) opens after this many wins. Shop C (Grass) opens after 2x wins. Shop D (Hades) opens after 3x wins.
+    # Shop A is always open. Shop B opens after this many wins. Shop C opens after 2x wins. Shop D opens after 3x wins.
     # Set to 0 to open all shops immediately.
     #
     # You can define additional values between the minimum and maximum values.
@@ -102,11 +102,11 @@ Age Of Mythology Retold:
     random-high: 0 # random value weighted towards higher values
     random-range-0-10: 0 # random value between 0 and 10
 
-  max_advancement_items_in_each_shop:
-    # Maximum number of advancement (progression) items allowed in each non-Marsh shop
-    # (Desert, Grass, Hades). Marsh (Shop A) never receives advancement items regardless.
-    # This sets the cap per shop; it does NOT force advancement items into shops.
-    # Set to 0 to forbid advancement items in shops entirely.
+  max_progression_items_in_each_shop:
+    # Maximum number of progression items allowed in each non-A shop
+    # (Shop B, Shop C, Shop D). Shop A never receives progression items regardless.
+    # This sets the cap per shop; it does NOT force progression items into shops.
+    # Set to 0 to forbid progression items in shops entirely.
     #
     # Minimum value is 0
     # Maximum value is 15
@@ -191,17 +191,6 @@ Age Of Mythology Retold:
   shuffle_atlantean_major_gods:
     # Include Atlantean major gods (Kronos, Oranos, Gaia) in the random major god pool.
     # Only applies when Random Major Gods is enabled.
-    'false': 0
-    'true': 50
-
-  update_buildings_for_random_god:
-    # When Random_Major_Gods is enabled, transform Player 1's military buildings
-    # at scenario start to match the randomly assigned civilization.
-    # For example, if a normally Greek scenario is assigned an Egyptian god,
-    # Greek military buildings (Military Academy, Archery Range, etc.) are
-    # transformed into their Egyptian equivalents (Barracks, Migdol Stronghold, etc.).
-    # Scenario 7 is a special case: Player 3's buildings are transformed instead
-    # of Player 1's, since Player 3's army is captured in that scenario.
     'false': 0
     'true': 50
 

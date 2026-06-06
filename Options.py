@@ -50,37 +50,34 @@ from dataclasses import dataclass
 from Options import Choice, PerGameCommonOptions, Range, StartInventoryPool, Toggle
 
 
-################
-# Goal Options #
-################
+# ################
+# # Goal Options #
+# ################
+#
+# class Goal(Choice):
+#     """Goal for this playthrough.
+#
+# fott_32_victory:
+# Beat scenario 32, A Place in My Dreams, to win.
+# Note: Beating scenario 32 requires all 3 Progressive Age Unlock items for whatever the civilization is for that scenario (vanilla Greek)
+# (the Mythic Age is needed to build the Wonder)."""
+#     internal_name = "goal"
+#     display_name = "Goal"
+#     option_fott_32_victory = 0
+#     default = option_fott_32_victory
 
-class Goal(Choice):
-    """Goal for this playthrough.
 
-fott_32_victory:
-Beat scenario 32, A Place in My Dreams, to win.
-Note: Beating scenario 32 requires all 3 Progressive Age Unlock items for whatever the civilization is for that scenario (vanilla Greek)
-(the Mythic Age is needed to build the Wonder)."""
-    internal_name = "goal"
-    display_name = "Goal"
-    option_fott_32_victory = 0
-    default = option_fott_32_victory
-
-
-##################
-# Starting Setup #
-##################
+#####################
+# Starting Campaign #
+#####################
 
 class StartingScenarios(Choice):
-    """Which civilization block is unlocked at the start?
+    """Which civilization block is unlocked at the start? All other enabled campaigns start locked.
 
 greek:        Scenarios 1-10 (Fall of the Trident: Greek)
 egyptian:     Scenarios 11-20 (Fall of the Trident: Egyptian)
 norse:        Scenarios 21-30 (Fall of the Trident: Norse)
-new_atlantis: Start with the New Atlantis Campaign. All of Fall of the Trident is locked until you find unlock items.
-              Requires new_atlantis_campaign to be enabled.
-
-The other FotT sections must be found as items in the pool. Within a section, all scenarios are immediately accessible.
+new_atlantis: Start with the New Atlantis Campaign.
 
 Starting with the Greek block is the easiest."""
     internal_name = "starting_scenarios"
@@ -124,8 +121,8 @@ You may beat any combination of scenarios from any activated campaigns.
 
 
 class ExtraFinalMissionAgeUnlocks(Range):
-    """Scenario 32 requires 3 Age Unlock items to reach the Mythic Age and build the Wonder. 
-This adds extra copies of whichever civilization's Age Unlock corresponds to the god assigned to scenario 32 (Greek by default, or randomized if Random Major Gods is enabled).
+    """Scenario 32 normally requires 3 Age Unlock items to reach the Mythic Age and build the Wonder. 
+This adds extra copies of whichever civilization's Age Unlock corresponds to the god assigned to scenario 32 (Greek by default, or randomized if Random Major gods is enabled).
 
 At the default of 1, there are 4 total copies of that unlock in the pool."""
     internal_name = "extra_final_mission_age_unlocks"
@@ -143,7 +140,8 @@ class GemShop(Toggle):
     """
     Enable the Gem Shop.
 
-    When enabled: beating scenarios earns Gems (currency), which are spent in the shop to receive items and hints. The shop scenario is accessible from the campaign menu.
+    When enabled: beating scenarios earns Gems (currency). Spend them in the shop to receive items and hints.
+    Gem Shop is accessible from the AoM AP Launcher window.
 
     When disabled: victories award random multiworld items instead of Gems and you can't enter the shop.
     """
@@ -155,7 +153,7 @@ class GemShop(Toggle):
 class WinsToOpenShop(Range):
     """
     Number of scenario victories required to open each additional shop tier (only used when Gem Shop is enabled).
-    Marsh shop is always open. Desert shop opens after this many wins. Grass shop opens after 2x wins. Hades shop opens after 3x wins.
+    Shop A is always open. Shop B opens after this many wins. Shop C opens after 2x wins. Shop D opens after 3x wins.
     Set to 0 to open all shops immediately.
     """
     internal_name = "wins_to_open_shop"
@@ -165,16 +163,16 @@ class WinsToOpenShop(Range):
     default       = 4
 
 
-class MaxAdvancementItemsInEachShop(Range):
+class MaxProgressionItemsInEachShop(Range):
     """
-    Maximum number of advancement items allowed in each non-Marsh shop (Desert, Grass, Hades).
+    Maximum number of progression items allowed in each non-first shop (Shop B, Shop C, Shop D).
 
-    Set to 0 to forbid advancement items in shops entirely (recommended). Set to 15 to allow every slot in those 3 shops to hold any item.
+    Set to 0 to forbid progression items in shops entirely (recommended). Set to 15 to allow every slot in those 3 shops to hold any item.
 
     Careful setting this too high as you can't grind gems. If you spend your gems unwisely, you could softlock the seed. (If that happens you can use JUNK FOOD NIGHT to cheat)
     """
-    internal_name = "max_advancement_items_in_each_shop"
-    display_name  = "Max Advancement Items In Each Shop"
+    internal_name = "max_progression_items_in_each_shop"
+    display_name  = "Max Progression Items In Each Shop"
     range_start   = 0
     range_end     = 15
     default       = 0
@@ -186,17 +184,17 @@ class MaxAdvancementItemsInEachShop(Range):
 
 class Random_Major_Gods(Toggle):
     """Randomize the major god for each scenario at generation time. The assigned god determines which techs and minor gods are available.
-    Think on your feat with this turned on."""
+    Think on your feet with this turned on."""
     internal_name = "random_major_gods"
-    display_name = "random_major_gods"
+    display_name = "Random Major gods"
     default = 1
 
 
 class ForceDifferentGod(Toggle):
     """When random_major_gods is enabled, forces the random god to never be the vanilla major god for that scenario and makes it more likely to play a civilization different from the vanilla.
-(e.g. 1. Omens is normally Poseidon, so you'll never play Poseidon on that mission with this on, and Zeus and Hades are much less likely)"""
+(e.g. 1. Omens is normally Poseidon, so you'll never play Poseidon on that mission with this on, and Zeus, Hades, and Demeter are much less likely)"""
     internal_name = "force_different_god"
-    display_name = "Force Different Major God"
+    display_name = "Force Different Major god"
     default = 1
 
 
@@ -204,7 +202,7 @@ class HeroAbilities(Toggle):
     """Include custom hero special ability items in the item pool?
 
 enabled (true):
-Recommended setting for an exciting, hero-focued campaign.
+Recommended setting for an exciting, hero-focused campaign.
 The following items are included:
 
 Arkantos:
@@ -280,85 +278,74 @@ class LocalFillerFrequency(Range):
     default       = 0
 
 
-class UpdateBuildingsForRandomGod(Toggle):
-    """
-    When Random_Major_Gods is enabled, transform your starting military buildings to match the randomly assigned civilization.
-    For example, 1. Omens is normally Greek. If you're randomly assigned Set, the Military Academies and Archery Ranges are transformed into Egyptian Barracks.
-    """
-    internal_name = "update_buildings_for_random_god"
-    display_name  = "Update Buildings for Random God"
-    default = 1
-
-
-
 
 class GreekMajorGods(Toggle):
     """Include Greek major gods in the random major god pool. Turn this off to never play as the Greeks.
-Only applies when Random Major Gods is enabled."""
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_greek_major_gods"
-    display_name  = "Shuffle Greek Major Gods"
+    display_name  = "Shuffle Greek Major gods"
     default = 1
 
 
 class EgyptianMajorGods(Toggle):
     """Include Egyptian major gods in the random major god pool. Turn this off to never play as the Egyptians.
-Only applies when Random Major Gods is enabled."""
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_egyptian_major_gods"
-    display_name  = "Shuffle Egyptian Major Gods"
+    display_name  = "Shuffle Egyptian Major gods"
     default = 1
 
 
 class NorseMajorGods(Toggle):
     """Include Norse major gods in the random major god pool. Turn this off to never play as the Norse.
-Only applies when Random Major Gods is enabled."""
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_norse_major_gods"
-    display_name  = "Shuffle Norse Major Gods"
+    display_name  = "Shuffle Norse Major gods"
     default = 1
 
 
 class AtlanteanMajorGods(Toggle):
-    """Include Atlantean major gods in the random major god pool. Turn this off to never play as the Atlanteans
-Only applies when Random Major Gods is enabled."""
+    """Include Atlantean major gods in the random major god pool. Turn this off to never play as the Atlanteans.
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_atlantean_major_gods"
-    display_name  = "Shuffle Atlantean Major Gods"
+    display_name  = "Shuffle Atlantean Major gods"
     default = 1
 
 
 class ChineseMajorGods(Toggle):
     """Include Chinese major gods in the random major god pool. Turn this off to never play as the Chinese.
-        If you don't have the Chinese DLC, Favored Land won't work for you. Buy the Chinese DLC for best results, but you can still play as these even if you don't have the DLC.
-Only applies when Random Major Gods is enabled."""
+If you don't have the Chinese DLC, Favored Land won't work for you and some graphics may look wrong. Buy the Chinese DLC for best results, but you can still play as them even if you don't have the DLC.
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_chinese_major_gods"
-    display_name  = "Shuffle Chinese Major Gods"
+    display_name  = "Shuffle Chinese Major gods"
     default = 0
 
 
 class JapaneseMajorGods(Toggle):
     """Include Japanese major gods in the random major god pool. Turn this off to never play as the Japanese.
-    Yes, you can play as the Japanese even if you don't have the Japanese DLC.
-Only applies when Random Major Gods is enabled."""
+If you don't have the Japanese DLC, Japanese Experience Points won't work for you and some graphics may look wrong. Buy the Japanese DLC for best results, but you can still play as them even if you don't have the DLC.
+Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_japanese_major_gods"
-    display_name  = "Shuffle Japanese Major Gods"
+    display_name  = "Shuffle Japanese Major gods"
     default = 0
 
 
 class AztecMajorGods(Toggle):
-    """Include Aztec major gods (Huitzilopochtli, Tezcatlipoca, Quetzalcoatl) in the random major god pool. Turn this off to never play as the Aztecs.
-    Yes, you can play as the Aztecs even if you don't have the Aztec DLC.
-    Only applies when Random Major Gods is enabled."""
+    """Include Aztec major gods in the random major god pool. Turn this off to never play as the Aztecs.
+    If you don't have the Aztec DLC, Aztec Tonalli favor won't work for you and some graphics may look wrong. Buy the Aztec DLC for best results, but you can still play as them even if you don't have the DLC. 
+    Only applies when Random Major gods is enabled."""
     internal_name = "shuffle_aztec_major_gods"
-    display_name  = "Shuffle Aztec Major Gods"
+    display_name  = "Shuffle Aztec Major gods"
     default = 0
 
 
-class MoreFrequentDLCGods(Toggle):
-    """Demeter and Freyr are more likely as random major gods.
-    If the random major god is Greek, you're more likely to play as Demeter and if the random major god is Norse Freyr is more likely.
-    Yes, you can actually play as these even if you don't have the DLC.
-    Only applies when Random Major Gods is enabled."""
-    internal_name = "more_frequent_dlc_gods"
-    display_name  = "More Frequent DLC Gods"
-    default = 0
+# class MoreFrequentDLCGods(Toggle):
+#     """Demeter and Freyr are more likely as random major gods.
+#     If the random major god is Greek, you're more likely to play as Demeter and if the random major god is Norse Freyr is more likely.
+#     Yes, you can actually play as these even if you don't have the DLC.
+#     Only applies when Random Major gods is enabled."""
+#     internal_name = "more_frequent_dlc_gods"
+#     display_name  = "More Frequent DLC gods"
+#     default = 0
 
 
 class FottGreekCampaign(Toggle):
@@ -387,7 +374,7 @@ When disabled, those 10 scenarios are unplayable and are removed from the pool."
 
 class NewAtlantis(Toggle):
     """Include The New Atlantis campaign.
-     When disabled, those 12 scenarios are unplayable and are removed from the pool."""
+    When disabled, those 12 scenarios are unplayable and are removed from the pool."""
     internal_name = "new_atlantis_campaign"
     display_name  = "New Atlantis Campaign"
     default = 0
@@ -415,7 +402,7 @@ To Turn this Off:
     internal_name = "max_keys_on_keyrings"
     display_name  = "Max Keys on Keyrings"
     range_start   = 0
-    range_end     = 12
+    range_end     = 15
     default       = 0
 
 
@@ -423,8 +410,8 @@ class Relicsanity(Toggle):
     """Include Relicsanity locations in the pool.
 
 When enabled, every relic in the campaigns becomes its own check — garrisoning a relic in a Temple sends a check to the multiworld.
-174 total relic locations across all campaigns: 103 in Fall of the Trident, 51 in The New Atlantis, 20 in The Golden Gift.
-Relics in disabled campaigns are removed alongside that campaign's other locations."""
+Roughly doubles locations and items in your world.
+"""
     internal_name = "relicsanity"
     display_name  = "Relicsanity"
     default = 0
@@ -433,33 +420,32 @@ Relics in disabled campaigns are removed alongside that campaign's other locatio
 @dataclass
 class AomOptions(PerGameCommonOptions):
     """All options for the Age of Mythology Retold Archipelago world."""
-    start_inventory_from_pool:       StartInventoryPool
-    goal:                            Goal
-    starting_scenarios:              StartingScenarios
-    final_scenarios:                 FinalScenarios
-    x_scenarios:                     XScenarios
-    extra_final_mission_age_unlocks: ExtraFinalMissionAgeUnlocks
-    gem_shop:                        GemShop
-    wins_to_open_shop:               WinsToOpenShop
-    max_advancement_items_in_each_shop: MaxAdvancementItemsInEachShop
-    random_major_gods:                       Random_Major_Gods
+    start_inventory_from_pool:          StartInventoryPool
+    # goal:                             Goal  # hidden from players; uncomment to re-expose
+    gem_shop:                           GemShop
+    wins_to_open_shop:                  WinsToOpenShop
+    max_progression_items_in_each_shop: MaxProgressionItemsInEachShop
+    fott_greek_campaign:                FottGreekCampaign
+    fott_egyptian_campaign:             FottEgyptianCampaign
+    fott_norse_campaign:                FottNorseCampaign
+    new_atlantis_campaign:              NewAtlantis
+    golden_gift_campaign:               GoldenGift
+    relicsanity:                        Relicsanity
+    max_keys_on_keyrings:               MaxKeysOnKeyrings
+    starting_scenarios:                 StartingScenarios
+    final_scenarios:                    FinalScenarios
+    x_scenarios:                        XScenarios
+    random_major_gods:                  Random_Major_Gods
     force_different_god:                ForceDifferentGod
-    hero_abilities:                  HeroAbilities
-    trap_percentage:                 TrapPercentage
-    local_filler_frequency:          LocalFillerFrequency
-    update_buildings_for_random_god: UpdateBuildingsForRandomGod
-    shuffle_greek_major_gods:        GreekMajorGods
-    shuffle_egyptian_major_gods:     EgyptianMajorGods
-    shuffle_norse_major_gods:        NorseMajorGods
-    shuffle_atlantean_major_gods:    AtlanteanMajorGods
-    shuffle_chinese_major_gods:      ChineseMajorGods
-    shuffle_japanese_major_gods:     JapaneseMajorGods
-    shuffle_aztec_major_gods:        AztecMajorGods
-    more_frequent_dlc_gods:          MoreFrequentDLCGods
-    fott_greek_campaign:             FottGreekCampaign
-    fott_egyptian_campaign:          FottEgyptianCampaign
-    fott_norse_campaign:             FottNorseCampaign
-    new_atlantis_campaign:           NewAtlantis
-    golden_gift_campaign:            GoldenGift
-    relicsanity:                     Relicsanity
-    max_keys_on_keyrings:            MaxKeysOnKeyrings
+    shuffle_greek_major_gods:           GreekMajorGods
+    shuffle_egyptian_major_gods:        EgyptianMajorGods
+    shuffle_norse_major_gods:           NorseMajorGods
+    shuffle_atlantean_major_gods:       AtlanteanMajorGods
+    shuffle_chinese_major_gods:         ChineseMajorGods
+    shuffle_japanese_major_gods:        JapaneseMajorGods
+    shuffle_aztec_major_gods:           AztecMajorGods
+    # more_frequent_dlc_gods:           MoreFrequentDLCGods  # hidden from players; uncomment to re-expose
+    extra_final_mission_age_unlocks:    ExtraFinalMissionAgeUnlocks
+    hero_abilities:                     HeroAbilities
+    local_filler_frequency:             LocalFillerFrequency
+    trap_percentage:                    TrapPercentage
