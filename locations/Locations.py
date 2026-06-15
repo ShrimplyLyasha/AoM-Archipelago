@@ -1688,6 +1688,78 @@ class aomLocationData(enum.IntEnum):
     )
 
     # ===========================================================================
+    # PILLARS OF THE GODS (APScenarioIDs 701-709)
+    # ===========================================================================
+    # POTG_1: Shennong's Chosen
+    POTG_1_VICTORY = (
+        global_location_id(aomScenarioData.POTG_1.id, 0),
+        "Victory",
+        aomScenarioData.POTG_1,
+        aomLocationType.VICTORY,
+    )
+    POTG_1_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_1.id, 1),
+        "Completion",
+        aomScenarioData.POTG_1,
+        aomLocationType.COMPLETION,
+    )
+    POTG_1_OBJ_1 = (
+        global_location_id(aomScenarioData.POTG_1.id, 2),
+        "Rescue the army",
+        aomScenarioData.POTG_1,
+        aomLocationType.OBJECTIVE,
+    )
+    POTG_1_OBJ_ = (
+        global_location_id(aomScenarioData.POTG_1.id, 3),
+        "Find the imprisoned hero",
+        aomScenarioData.POTG_1,
+        aomLocationType.OBJECTIVE,
+    )
+    POTG_1_OBJ_3 = (
+        global_location_id(aomScenarioData.POTG_1.id, 4),
+        "Kill the Taoties",
+        aomScenarioData.POTG_1,
+        aomLocationType.OBJECTIVE,
+    )
+    POTG_1_OBJ_4 = (
+        global_location_id(aomScenarioData.POTG_1.id, 5),
+        "Save allied soldiers",
+        aomScenarioData.POTG_1,
+        aomLocationType.OBJECTIVE,
+    )
+    POTG_1_OBJ_5 = (
+        global_location_id(aomScenarioData.POTG_1.id, 6),
+        "Use the Pioneer's lantern to discover what is behind the wall",
+        aomScenarioData.POTG_1,
+        aomLocationType.OBJECTIVE,
+    )
+    #POTG - Houyi's Pride
+    POTG_2_VICTORY = (
+        global_location_id(aomScenarioData.POTG_2.id, 0),
+        "Victory",
+        aomScenarioData.POTG_2,
+        aomLocationType.VICTORY,
+    )
+    POTG_2_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_2.id, 1),
+        "Completion",
+        aomScenarioData.POTG_2,
+        aomLocationType.COMPLETION,
+    )
+    POTG_2_OBJ_1 = (
+        global_location_id(aomScenarioData.POTG_2.id, 2),
+        "Save the village",
+        aomScenarioData.POTG_2,
+        aomLocationType.OBJECTIVE,
+    )
+    POTG_2_OBJ_ = (
+        global_location_id(aomScenarioData.POTG_2.id, 3),
+        "Build up and defeat Huang Zhaowu's Army",
+        aomScenarioData.POTG_2,
+        aomLocationType.OBJECTIVE,
+    )
+
+    # ===========================================================================
     # RELICSANITY — one location per garrisoned relic.
     # local_id starts at 10 to leave a buffer above the highest objective local_id.
     # 174 total: FoTT 103, New Atlantis 51, Golden Gift 20.

@@ -667,6 +667,7 @@ int APGetCampaignForScenario(int scenarioId = 0)
     if (scenarioId >= 31 && scenarioId <= 32) { return 4; }
     if (scenarioId >= 501 && scenarioId <= 512) { return 5; }  // New Atlantis
     if (scenarioId >= 601 && scenarioId <= 604) { return 6; }  // The Golden Gift
+    if (scenarioId >= 701 && scenarioId <= 709) { return 7; }  // Pillars of the Gods
     return 0;
 }
 
@@ -727,6 +728,17 @@ int APGetMajorGodForScenario(int scenarioId = 0)
     if (scenarioId == 602) { return cAPMajorLoki; }
     if (scenarioId == 603) { return cAPMajorLoki; }
     if (scenarioId == 604) { return cAPMajorThor; }
+
+    //Pillars of the Gods (701-709)
+    if (scenarioId == 701) { return cAPMajorShennong; }
+    if (scenarioId == 702) { return cAPMajorFuxi; }
+    if (scenarioId == 703) { return cAPMajorNuwa; }
+    if (scenarioId == 704) { return cAPMajorShennong; }
+    if (scenarioId == 705) { return cAPMajorShennong; }
+    if (scenarioId == 706) { return cAPMajorFuxi; }
+    if (scenarioId == 707) { return cAPMajorShennong; }
+    if (scenarioId == 708) { return cAPMajorNuwa; }
+    if (scenarioId == 709) { return cAPMajorShennong; }
 
     return cAPMajorNone;
 }
@@ -1726,6 +1738,15 @@ string APGetCheckText(int id = 0)
     if (id == 3927024) { return "Scenario Victory"; }
     if (id == 3927026) { return "Destroy Loki's Temple near your Town Center."; }
     if (id == 3927027) { return "Bring Brokk and Eitri to the Battle Boar."; }
+    // ---- Pillars of the Gods ----
+    //POTG_1 - Shennong's Chosen
+    if (id == 3936724) { return "Scenario Victory."; }
+    if (id == 3936726) { return "Rescue the army."; }
+    if (id == 3936727) { return "Find the imprisoned hero."; }
+    if (id == 3936728) { return "Kill the Taoties."; }
+    if (id == 3936729) { return "Save allied soldiers."; }
+    if (id == 3936730) { return "Use the Pioneer's lantern to discover what is behind the wall."; }
+
     // ---- Relicsanity locations (local_id >= 10) ----
     // FOTT 3
     if (id == 3876934) { return "Relic 1: Near Stone Pillars at Camp"; }
@@ -3914,6 +3935,16 @@ int APGetStartingAgeCount(int scenarioId = 0)
     if (scenarioId == 602) { return 2; }  // Heroic
     if (scenarioId == 603) { return 2; }  // Heroic
     if (scenarioId == 604) { return 3; }  // Mythic
+    // Pillars of the Gods (APScenarioIDs 701-709)
+    if (scenarioId == 701) { return 1; }  // Classical (Max Heroic)
+    if (scenarioId == 702) { return 1; }  // Classical (Max Classical)
+    if (scenarioId == 703) { return 0; }  // Archaic (Max Heroic)
+    if (scenarioId == 704) { return 2; }  // Heroic (Max Heroic)
+    if (scenarioId == 705) { return 1; }  // Classical (Max Default?)
+    if (scenarioId == 706) { return 2; }  // Heroic (Max Default)
+    if (scenarioId == 707) { return 2; }  // Heroic (Max Default, no TC)
+    if (scenarioId == 708) { return 3; }  // Mythic (Max Default)
+    if (scenarioId == 709) { return 3; }  // Mythic (Max Default)
     return 0;
 }
 
