@@ -253,6 +253,9 @@ _VANILLA_GODS: dict = {
     507:  5, 508:  6, 509:  8, 510: 12, 511: 11, 512: 12,
     # The Golden Gift (APScenarioIDs 601-604)
     601: 8, 602: 9, 603: 9, 604: 8,
+    # Pillars of the Gods (APScenarioIDs 701-709)
+    701: 17, 702: 16, 703: 15, 704: 17, 705: 17, 706: 16, 707: 17,
+    708: 15, 709: 17,
 }
 _GREEK_GODS      = frozenset({1, 2, 3, 13})
 _EGYPTIAN_GODS   = frozenset({4, 5, 6})
@@ -413,6 +416,8 @@ _SCENARIO_STARTING_AGE: dict[int, int] = {
     507:2, 508:2, 509:2, 510:2, 511:3, 512:3,
     # The Golden Gift (601-604)
     601:2, 602:2, 603:2, 604:3,
+    # Pillars of the Gods (701-709)
+    701:1, 702:1, 703:0, 704:2, 705:1, 706:2, 707:2, 708:3, 709:3,
 }
 
 
@@ -502,6 +507,26 @@ _VANILLA_MINOR_GOD_TECHS: dict[int, list] = {
     604: ["cTechClassicalAgeNorse",    "cTechClassicalAgeFreyja",
           "cTechHeroicAgeNorse",       "cTechHeroicAgeSkadi",
           "cTechMythicAgeNorse",       "cTechMythicAgeTyr"],
+    # ---------------------------------------------------------------------------
+    # Pillars of the Gods (APScenarioIDs 701-709) — Chinese pantheon
+    # Best-effort vanilla picks (option A from _MINOR_GOD_TECHS); only consulted
+    # when random_major_gods is off. 703 starts Archaic so takes no minor techs.
+    # ---------------------------------------------------------------------------
+    701: ["cTechClassicalAgeChinese",  "cTechClassicalAgeHoutu"],
+    702: ["cTechClassicalAgeChinese",  "cTechClassicalAgeXuannu"],
+    704: ["cTechClassicalAgeChinese",  "cTechClassicalAgeHoutu",
+          "cTechHeroicAgeChinese",     "cTechHeroicAgeRushou"],
+    705: ["cTechClassicalAgeChinese",  "cTechClassicalAgeHoutu"],
+    706: ["cTechClassicalAgeChinese",  "cTechClassicalAgeXuannu",
+          "cTechHeroicAgeChinese",     "cTechHeroicAgeGoumang"],
+    707: ["cTechClassicalAgeChinese",  "cTechClassicalAgeHoutu",
+          "cTechHeroicAgeChinese",     "cTechHeroicAgeRushou"],
+    708: ["cTechClassicalAgeChinese",  "cTechClassicalAgeXuannu",
+          "cTechHeroicAgeChinese",     "cTechHeroicAgeGoumang",
+          "cTechMythicAgeChinese",     "cTechMythicAgeGonggong"],
+    709: ["cTechClassicalAgeChinese",  "cTechClassicalAgeHoutu",
+          "cTechHeroicAgeChinese",     "cTechHeroicAgeRushou",
+          "cTechMythicAgeChinese",     "cTechMythicAgeHuangdi"],
 }
 
 
