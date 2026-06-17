@@ -427,6 +427,14 @@ Roughly doubles locations and items in your world.
     default = 0
 
 
+class OptionalObjectivesAreLocations(Toggle):
+    """Turn each scenario's optional (secondary) objectives into Archipelago locations.
+    """
+    internal_name = "optional_objectives_are_locations"
+    display_name  = "Optional Objectives Are Locations"
+    default = 0
+
+
 @dataclass
 class AomOptions(PerGameCommonOptions):
     """All options for the Age of Mythology Retold Archipelago world."""
@@ -442,6 +450,7 @@ class AomOptions(PerGameCommonOptions):
     golden_gift_campaign:               GoldenGift
     pillars_of_the_gods:                PillarsOfTheGods
     relicsanity:                        Relicsanity
+    optional_objectives_are_locations:  OptionalObjectivesAreLocations
     max_keys_on_keyrings:               MaxKeysOnKeyrings
     starting_scenarios:                 StartingScenarios
     final_scenarios:                    FinalScenarios

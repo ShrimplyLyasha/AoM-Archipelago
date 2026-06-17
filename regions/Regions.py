@@ -207,6 +207,7 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
     # All scenarios in a section are accessible as soon as the section is unlocked,
     # gated only by their individual age-unlock and point requirements (set in Rules.py).
     relicsanity_on = bool(getattr(multiworld.worlds[player], "relicsanity_enabled", False))
+    optional_objectives_on = bool(getattr(multiworld.worlds[player], "optional_objectives_enabled", False))
     for scenario in aomScenarioData:
         if scenario.campaign in disabled_campaigns:
             continue
@@ -215,6 +216,11 @@ def create_regions(multiworld: MultiWorld, player: int) -> None:
             scenario_locations = [
                 loc for loc in scenario_locations
                 if loc.type != aomLocationType.RELIC
+            ]
+        if not optional_objectives_on:
+            scenario_locations = [
+                loc for loc in scenario_locations
+                if loc.type != aomLocationType.OPTIONAL_OBJECTIVE
             ]
         scenario_region = create_region(
             multiworld,
