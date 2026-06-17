@@ -164,6 +164,7 @@ from .Options import (Random_Major_Gods, ForceDifferentGod, ExtraFinalMissionAge
     NewAtlantis,
     GoldenGift,
     Relicsanity,
+    OptionalObjectivesAreLocations,
     GemShop,
     WinsToOpenShop,
     MaxProgressionItemsInEachShop,
@@ -199,6 +200,7 @@ class aomWebWorld(WebWorld):
             NewAtlantis,
             GoldenGift,
             Relicsanity,
+            OptionalObjectivesAreLocations,
             MaxKeysOnKeyrings,
         ]),
         OptionGroup("Starting Campaign", [
@@ -747,6 +749,12 @@ class aomWorld(World):
 
         # Relicsanity flag — read once so Regions/Rules/create_items can branch on it.
         self.relicsanity_enabled: bool = bool(self.options.relicsanity.value)
+
+        # Optional-objective-sanity flag — Regions.py filters OPTIONAL_OBJECTIVE
+        # locations out when off, and the location counts below honor it.
+        self.optional_objectives_enabled: bool = bool(
+            self.options.optional_objectives_are_locations.value
+        )
 
         # Local-filler staging list: filler items destined for local-only
         # placement are collected here during create_items, then placed by
@@ -1856,11 +1864,13 @@ class aomWorld(World):
         gem_shop_on = self.gem_shop_enabled
         disabled_campaigns = self.disabled_campaigns
         relicsanity_on = self.relicsanity_enabled
+        optional_objectives_on = self.optional_objectives_enabled
         visible_location_count = (
             sum(1 for loc in Locations.aomLocationData
                 if loc.type != Locations.aomLocationType.COMPLETION
                 and loc.scenario.campaign not in disabled_campaigns
-                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC))
+                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC)
+                and (optional_objectives_on or loc.type != Locations.aomLocationType.OPTIONAL_OBJECTIVE))
             - 1  # scenario 32 Victory is always locked to the Victory item
         )
         if gem_shop_on:
@@ -1903,7 +1913,8 @@ class aomWorld(World):
             sum(1 for loc in Locations.aomLocationData
                 if loc.type != Locations.aomLocationType.COMPLETION
                 and loc.scenario.campaign not in disabled_campaigns
-                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC))
+                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC)
+                and (optional_objectives_on or loc.type != Locations.aomLocationType.OPTIONAL_OBJECTIVE))
             - 1  # scenario 32 Victory locked to Victory item
         )
         if gem_shop_on:
@@ -2357,6 +2368,7 @@ class aomWorld(World):
             "random_major_gods":      bool(self.options.random_major_gods.value),
             "gem_shop":       self.gem_shop_enabled,
             "relicsanity":    self.relicsanity_enabled,
+            "optional_objectives": self.optional_objectives_enabled,
             "excluded_civs":  sorted(self.excluded_civs),
         }
         if self.options.random_major_gods:

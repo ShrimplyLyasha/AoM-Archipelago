@@ -1744,6 +1744,48 @@ string APGetCheckText(int id = 0)
     if (id == 3927024) { return "Scenario Victory"; }
     if (id == 3927026) { return "Destroy Loki's Temple near your Town Center."; }
     if (id == 3927027) { return "Bring Brokk and Eitri to the Battle Boar."; }
+    // ---- Optional objectives (local_id >= 40) ----
+    if (id == 3876764) { return "Train Archers."; }
+    if (id == 3876765) { return "Train Infantry."; }
+    if (id == 3876766) { return "Upgrade your units using the Armory."; }
+    if (id == 3876864) { return "Task an idle Villager to gather Food."; }
+    if (id == 3876865) { return "Build a Dock."; }
+    if (id == 3877064) { return "Destroy Trojan mining camps to loot Gold."; }
+    if (id == 3877065) { return "Destroy Troy's caravans and Market to cut its Gold supply and weaken its forces."; }
+    if (id == 3877264) { return "Prevent Trojan scouts from giving away your location."; }
+    if (id == 3877265) { return "Kill the Cyclops guard to steal the Helepolis siege towers."; }
+    if (id == 3877266) { return "Use the Helepolis siege towers to destroy the Trojan gate."; }
+    if (id == 3877364) { return "Find additional resources in Ioklos."; }
+    if (id == 3877564) { return "Block tunnels to slow enemy attacks."; }
+    if (id == 3877664) { return "Rescue any Greek soldiers trapped by the cave-in."; }
+    if (id == 3887064) { return "Take control of allied Monuments by bringing Amanra to them."; }
+    if (id == 3887065) { return "Take control of allied Temples by bringing Amanra to them."; }
+    if (id == 3887164) { return "Destroy the Lighthouse at the entrance to Abydos' harbor."; }
+    if (id == 3887364) { return "Bring Amanra to any allied buildings or Laborers to convert them to your cause."; }
+    if (id == 3887464) { return "Destroy the old tombs in the desert to stop the Mummy attacks."; }
+    if (id == 3887564) { return "Stay behind the large forest to remain undetected until you are ready to attack."; }
+    if (id == 3887664) { return "Bring all Osiris Piece Carts to the Pyramid before Kemsyt opens the Underworld passage."; }
+    if (id == 3887665) { return "Destroy Kemsyt's Tower to liberate the fishing village."; }
+    if (id == 3896764) { return "Search for and rescue more pigs."; }
+    if (id == 3896765) { return "Rescue and restore as many pigs as you can to human form."; }
+    if (id == 3896766) { return "Capture Circe's outlying Docks by defeating their guards."; }
+    if (id == 3897164) { return "Create an ambush - build at least five Towers."; }
+    if (id == 3897364) { return "Find and raid the enemy town to the west."; }
+    if (id == 3897564) { return "Mine Gold to receive reinforcements from the surface."; }
+    if (id == 3897565) { return "Rescue captured Norsemen."; }
+    if (id == 3906864) { return "Destroy Temples of Poseidon for Meteor god powers."; }
+    if (id == 3906865) { return "Recapture Atlantis' Plenty Vaults for more resources."; }
+    if (id == 3926764) { return "Rescue Arngrim's cows."; }
+    if (id == 3926964) { return "Find and destroy Eitri's Docks to capture his Fishing Ships."; }
+    if (id == 3927064) { return "Destroy all of Loki's Temples (Orange)."; }
+    if (id == 3916864) { return "Repair all remaining Temples."; }
+    if (id == 3916865) { return "Destroy the four Military Academies beyond the pass."; }
+    if (id == 3916964) { return "Claim Plenty Vaults to gain resources."; }
+    if (id == 3916965) { return "Destroy Statues of Melagius for various rewards."; }
+    if (id == 3916966) { return "Capture the Greek fishing village."; }
+    if (id == 3917264) { return "Destroy Shrines of Olympus for different rewards."; }
+    if (id == 3917464) { return "Find stray Camel caravans."; }
+    if (id == 3917564) { return "Protect Folstag's Temples to receive Frost Giants."; }
     // ---- Relicsanity locations (local_id >= 10) ----
     // FOTT 3
     if (id == 3876934) { return "Relic 1: Near Stone Pillars at Camp"; }
@@ -1983,10 +2025,17 @@ void APCheckLocation(string objectiveText = "")
 
 void APShowQueuedCheckMessage(int id = 0)
 {
-    // Relicsanity relic locations have local_id >= 10, encoded as id % 100 >= 10.
-    // When relicsanity is off (gAPHasRelicCounter == 0) these IDs are still
-    // queued by the relic-garrison trigger, but no message should be shown.
-    if (((id - 3866624) % 100 >= 10) && (gAPHasRelicCounter == 0))
+    // Local-id bands within each scenario's 100-id block (mirror of the band
+    // table in locations/Locations.py): 10-39 = relicsanity relics,
+    // 40+ = optional objectives.  Both ranges may be queued by editor triggers
+    // even when their option is off (the trigger still fires); suppress the
+    // toast in that case.
+    int localId = (id - 3866624) % 100;
+    if ((localId >= 10) && (localId < 40) && (gAPHasRelicCounter == 0))
+    {
+        return;
+    }
+    if ((localId >= 40) && (gAPHasOptionalObjectives == 0))
     {
         return;
     }

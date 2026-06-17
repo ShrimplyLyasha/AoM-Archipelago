@@ -603,7 +603,7 @@ def _update_atlantis_ui(ctx: "AoMContext") -> None:
         # Only count check-worthy location types (OBJECTIVE, VICTORY, RELIC).
         # COMPLETION locations are never checks; filtering by type keeps the count
         # consistent with what the player sees in-game.
-        _check_types = (aomLocationType.OBJECTIVE, aomLocationType.VICTORY, aomLocationType.RELIC)
+        _check_types = (aomLocationType.OBJECTIVE, aomLocationType.VICTORY, aomLocationType.RELIC, aomLocationType.OPTIONAL_OBJECTIVE)
         for scenario in aomScenarioData:
             locations = SCENARIO_TO_LOCATIONS.get(scenario, [])
             # Intersect with the server pool so only locations that were actually
@@ -1685,6 +1685,7 @@ class AoMContext(CommonContext):
         )
         self.game_ctx.gem_shop_enabled      = bool(slot_data.get("gem_shop", True))
         self.game_ctx.relicsanity_enabled   = bool(slot_data.get("relicsanity", False))
+        self.game_ctx.optional_objectives_enabled = bool(slot_data.get("optional_objectives", False))
         self.game_ctx.wins_to_open_shop     = int(slot_data.get("wins_to_open_shop", 4))
         self._excluded_civs: frozenset[str] = frozenset(slot_data.get("excluded_civs", []))
         self._disabled_campaign_ids: set[int] = set(slot_data.get("disabled_campaigns", []))
@@ -1908,7 +1909,7 @@ class AoMContext(CommonContext):
                 # only in valid_loc_ids when relicsanity is on, so they're
                 # naturally excluded otherwise.
                 unchecked = [l.id for l in SCENARIO_TO_LOCATIONS.get(scenario, [])
-                             if l.type in (aomLocationType.OBJECTIVE, aomLocationType.RELIC)
+                             if l.type in (aomLocationType.OBJECTIVE, aomLocationType.RELIC, aomLocationType.OPTIONAL_OBJECTIVE)
                              and l.id in valid_loc_ids
                              and l.id not in self.game_ctx.sent_checks]
                 if unchecked:

@@ -296,6 +296,7 @@ class AoMGameContext:
     world_id: int = 0
     gem_shop_enabled: bool = True
     relicsanity_enabled: bool = False
+    optional_objectives_enabled: bool = False
     trap_queue: list  = field(default_factory=list)   # list of trap_type ints
     trap_ack_nonce: int = 0                           # written to aom_state.xs
     traps_fired_this_scenario: int = 0                 # reset each scenario load
@@ -973,6 +974,10 @@ def write_aom_state(ctx: AoMGameContext) -> None:
 
     _xs("")
     _xs("extern int gAPHasRelicCounter = 0;")
+    # Optional-objective-sanity: 1 when the player enabled the option, so
+    # archipelago.xs (APShowQueuedCheckMessage) only shows optional-objective
+    # toasts — and only counts them — when they are real checks for this slot.
+    _xs(f"extern int gAPHasOptionalObjectives = {1 if ctx.optional_objectives_enabled else 0};")
     _xs("")
     _xs("void APRelicCounterInit()")
     _xs("{")

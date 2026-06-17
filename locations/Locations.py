@@ -60,6 +60,7 @@ class aomLocationType(enum.Flag):
     COMPLETION = enum.auto()
     OBJECTIVE  = enum.auto()
     RELIC      = enum.auto()
+    OPTIONAL_OBJECTIVE = enum.auto()
 
 
 def global_location_id(scenario_id: int, local_location_id: int) -> int:
@@ -1944,6 +1945,112 @@ class aomLocationData(enum.IntEnum):
     GG_4_RELIC_4 = (global_location_id(aomScenarioData.GG_4.id, 13), "Relic 4: Shrine West of South Troll Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
     GG_4_RELIC_5 = (global_location_id(aomScenarioData.GG_4.id, 14), "Relic 5: Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
     GG_4_RELIC_6 = (global_location_id(aomScenarioData.GG_4.id, 15), "Relic 6: Shrine West of Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
+
+    # ===========================================================================
+    # OPTIONAL OBJECTIVES — secondary in-mission objectives, one location each.
+    # Only generated when the `optional_objectives_are_locations` YAML option is on
+    # (Regions.py filters OPTIONAL_OBJECTIVE locations out otherwise).  Like every
+    # other scenario-anchored location, these are automatically dropped for any
+    # campaign disabled via the campaign toggles.
+    #
+    # PER-SCENARIO local_id BANDS (the 0..99 slot inside each scenario's 100-id
+    # block — see global_location_id at the top of this file).  Keep new members
+    # inside their band so the ranges never collide as more content is added:
+    #     0       VICTORY
+    #     1       COMPLETION
+    #     2  - 9  primary objectives        (aomLocationType.OBJECTIVE,           up to 8)
+    #     10 - 39 relicsanity relics        (aomLocationType.RELIC,               up to 30)
+    #     40 - 99 optional objectives       (aomLocationType.OPTIONAL_OBJECTIVE,  up to 60)
+    # Relics historically used 10-19; the band is reserved through 39 so a
+    # relic-heavy scenario can grow without ever reaching the optional band.
+    #
+    # Ordering here is purely cosmetic: Fall of the Trident, then Golden Gift,
+    # then New Atlantis.  The lookup tables / region wiring iterate the whole
+    # enum, so declaration order does not affect behavior.
+    #
+    # ADDING OPTIONAL OBJECTIVES FOR A NEW (OR EXISTING) CAMPAIGN:
+    #   1. Make sure the scenario exists in locations/Scenarios.py (its `id`
+    #      gives the 100-id block these local_ids slot into).
+    #   2. Add `<SCEN>_OPT_<n>` members below, numbering local_id from 40 upward
+    #      and contiguously per scenario (no gaps — fill_slot_data counts these).
+    #   3. Mirror the human-readable text in archipelago.xs::APGetCheckText so
+    #      the in-game toast shows the objective name (see that file's
+    #      "Optional objectives (local_id >= 40)" block).  The AI bridge
+    #      `APCheck_<id>` is auto-generated for every non-COMPLETION location, so
+    #      no client change is needed there.
+    #   4. Give the player an editor trigger that fires the check — see the
+    #      generated "Optional Objectives XS Snippets" doc for the exact pattern.
+    #   No Options/Regions change is required: the option gate and campaign gate
+    #   already cover any new OPTIONAL_OBJECTIVE location automatically.
+    # ===========================================================================
+
+    # FOTT_1: 1. Omens
+    FOTT_1_OPT_1 = (global_location_id(aomScenarioData.FOTT_1.id, 40), "Train Archers.", aomScenarioData.FOTT_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_1_OPT_2 = (global_location_id(aomScenarioData.FOTT_1.id, 41), "Train Infantry.", aomScenarioData.FOTT_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_1_OPT_3 = (global_location_id(aomScenarioData.FOTT_1.id, 42), "Upgrade your units using the Armory.", aomScenarioData.FOTT_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_2: 2. Consequences
+    FOTT_2_OPT_1 = (global_location_id(aomScenarioData.FOTT_2.id, 40), "Task an idle Villager to gather Food.", aomScenarioData.FOTT_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_2_OPT_2 = (global_location_id(aomScenarioData.FOTT_2.id, 41), "Build a Dock.", aomScenarioData.FOTT_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_4: 4. A Fine Plan
+    FOTT_4_OPT_1 = (global_location_id(aomScenarioData.FOTT_4.id, 40), "Destroy Trojan mining camps to loot Gold.", aomScenarioData.FOTT_4, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_4_OPT_2 = (global_location_id(aomScenarioData.FOTT_4.id, 41), "Destroy Troy's caravans and Market to cut its Gold supply and weaken its forces.", aomScenarioData.FOTT_4, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_6: 6. I Hope This Works
+    FOTT_6_OPT_1 = (global_location_id(aomScenarioData.FOTT_6.id, 40), "Prevent Trojan scouts from giving away your location.", aomScenarioData.FOTT_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_6_OPT_2 = (global_location_id(aomScenarioData.FOTT_6.id, 41), "Kill the Cyclops guard to steal the Helepolis siege towers.", aomScenarioData.FOTT_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_6_OPT_3 = (global_location_id(aomScenarioData.FOTT_6.id, 42), "Use the Helepolis siege towers to destroy the Trojan gate.", aomScenarioData.FOTT_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_7: 7. More Bandits
+    FOTT_7_OPT_1 = (global_location_id(aomScenarioData.FOTT_7.id, 40), "Find additional resources in Ioklos.", aomScenarioData.FOTT_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_9: 9. Revelation
+    FOTT_9_OPT_1 = (global_location_id(aomScenarioData.FOTT_9.id, 40), "Block tunnels to slow enemy attacks.", aomScenarioData.FOTT_9, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_10: 10. Strangers
+    FOTT_10_OPT_1 = (global_location_id(aomScenarioData.FOTT_10.id, 40), "Rescue any Greek soldiers trapped by the cave-in.", aomScenarioData.FOTT_10, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_14: 14. Isis, Hear My Plea
+    FOTT_14_OPT_1 = (global_location_id(aomScenarioData.FOTT_14.id, 40), "Take control of allied Monuments by bringing Amanra to them.", aomScenarioData.FOTT_14, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_14_OPT_2 = (global_location_id(aomScenarioData.FOTT_14.id, 41), "Take control of allied Temples by bringing Amanra to them.", aomScenarioData.FOTT_14, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_15: 15. Let's Go
+    FOTT_15_OPT_1 = (global_location_id(aomScenarioData.FOTT_15.id, 40), "Destroy the Lighthouse at the entrance to Abydos' harbor.", aomScenarioData.FOTT_15, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_17: 17. The Jackal's Stronghold
+    FOTT_17_OPT_1 = (global_location_id(aomScenarioData.FOTT_17.id, 40), "Bring Amanra to any allied buildings or Laborers to convert them to your cause.", aomScenarioData.FOTT_17, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_18: 18. A Long Way From Home
+    FOTT_18_OPT_1 = (global_location_id(aomScenarioData.FOTT_18.id, 40), "Destroy the old tombs in the desert to stop the Mummy attacks.", aomScenarioData.FOTT_18, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_19: 19. Watch That First Step
+    FOTT_19_OPT_1 = (global_location_id(aomScenarioData.FOTT_19.id, 40), "Stay behind the large forest to remain undetected until you are ready to attack.", aomScenarioData.FOTT_19, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_20: 20. Where They Belong
+    FOTT_20_OPT_1 = (global_location_id(aomScenarioData.FOTT_20.id, 40), "Bring all Osiris Piece Carts to the Pyramid before Kemsyt opens the Underworld passage.", aomScenarioData.FOTT_20, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_20_OPT_2 = (global_location_id(aomScenarioData.FOTT_20.id, 41), "Destroy Kemsyt's Tower to liberate the fishing village.", aomScenarioData.FOTT_20, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_21: 21. Old Friends
+    FOTT_21_OPT_1 = (global_location_id(aomScenarioData.FOTT_21.id, 40), "Search for and rescue more pigs.", aomScenarioData.FOTT_21, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_21_OPT_2 = (global_location_id(aomScenarioData.FOTT_21.id, 41), "Rescue and restore as many pigs as you can to human form.", aomScenarioData.FOTT_21, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_21_OPT_3 = (global_location_id(aomScenarioData.FOTT_21.id, 42), "Capture Circe's outlying Docks by defeating their guards.", aomScenarioData.FOTT_21, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_25: 25. Welcoming Committee
+    FOTT_25_OPT_1 = (global_location_id(aomScenarioData.FOTT_25.id, 40), "Create an ambush - build at least five Towers.", aomScenarioData.FOTT_25, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_27: 27. The Well of Urd
+    FOTT_27_OPT_1 = (global_location_id(aomScenarioData.FOTT_27.id, 40), "Find and raid the enemy town to the west.", aomScenarioData.FOTT_27, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_29: 29. Unlikely Heroes
+    FOTT_29_OPT_1 = (global_location_id(aomScenarioData.FOTT_29.id, 40), "Mine Gold to receive reinforcements from the surface.", aomScenarioData.FOTT_29, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_29_OPT_2 = (global_location_id(aomScenarioData.FOTT_29.id, 41), "Rescue captured Norsemen.", aomScenarioData.FOTT_29, aomLocationType.OPTIONAL_OBJECTIVE)
+    # FOTT_32: 32. A Place in My Dreams
+    FOTT_32_OPT_1 = (global_location_id(aomScenarioData.FOTT_32.id, 40), "Destroy Temples of Poseidon for Meteor god powers.", aomScenarioData.FOTT_32, aomLocationType.OPTIONAL_OBJECTIVE)
+    FOTT_32_OPT_2 = (global_location_id(aomScenarioData.FOTT_32.id, 41), "Recapture Atlantis' Plenty Vaults for more resources.", aomScenarioData.FOTT_32, aomLocationType.OPTIONAL_OBJECTIVE)
+    # GG_1: GG 1. Brokk's Journey
+    GG_1_OPT_1 = (global_location_id(aomScenarioData.GG_1.id, 40), "Rescue Arngrim's cows.", aomScenarioData.GG_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    # GG_3: GG 3. Fight at the Forge
+    GG_3_OPT_1 = (global_location_id(aomScenarioData.GG_3.id, 40), "Find and destroy Eitri's Docks to capture his Fishing Ships.", aomScenarioData.GG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    # GG_4: GG 4. Loki's Temples
+    GG_4_OPT_1 = (global_location_id(aomScenarioData.GG_4.id, 40), "Destroy all of Loki's Temples (Orange).", aomScenarioData.GG_4, aomLocationType.OPTIONAL_OBJECTIVE)
+    # NA_2: NA 2. Atlantis Reborn
+    NA_2_OPT_1 = (global_location_id(aomScenarioData.NA_2.id, 40), "Repair all remaining Temples.", aomScenarioData.NA_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    NA_2_OPT_2 = (global_location_id(aomScenarioData.NA_2.id, 41), "Destroy the four Military Academies beyond the pass.", aomScenarioData.NA_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    # NA_3: NA 3. Greetings From Greece
+    NA_3_OPT_1 = (global_location_id(aomScenarioData.NA_3.id, 40), "Claim Plenty Vaults to gain resources.", aomScenarioData.NA_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    NA_3_OPT_2 = (global_location_id(aomScenarioData.NA_3.id, 41), "Destroy Statues of Melagius for various rewards.", aomScenarioData.NA_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    NA_3_OPT_3 = (global_location_id(aomScenarioData.NA_3.id, 42), "Capture the Greek fishing village.", aomScenarioData.NA_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    # NA_6: NA 6. Mount Olympus
+    NA_6_OPT_1 = (global_location_id(aomScenarioData.NA_6.id, 40), "Destroy Shrines of Olympus for different rewards.", aomScenarioData.NA_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    # NA_8: NA 8. Cerberus
+    NA_8_OPT_1 = (global_location_id(aomScenarioData.NA_8.id, 40), "Find stray Camel caravans.", aomScenarioData.NA_8, aomLocationType.OPTIONAL_OBJECTIVE)
+    # NA_9: NA 9. Rampage
+    NA_9_OPT_1 = (global_location_id(aomScenarioData.NA_9.id, 40), "Protect Folstag's Temples to receive Frost Giants.", aomScenarioData.NA_9, aomLocationType.OPTIONAL_OBJECTIVE)
 
 
 
