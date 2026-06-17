@@ -1523,10 +1523,13 @@ def set_item_placement_restrictions(world) -> None:
     }
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
     relicsanity_on = bool(getattr(world, "relicsanity_enabled", False))
+    optional_objectives_on = bool(getattr(world, "optional_objectives_enabled", False))
     for location_data in aomLocationData:
         if location_data.scenario.campaign in disabled_campaigns:
             continue
         if not relicsanity_on and location_data.type == aomLocationType.RELIC:
+            continue
+        if not optional_objectives_on and location_data.type == aomLocationType.OPTIONAL_OBJECTIVE:
             continue
         location  = multiworld.get_location(location_data.global_name(), player)
         forbidden = campaign_to_forbidden.get(location_data.scenario.campaign.name)

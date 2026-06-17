@@ -3628,7 +3628,7 @@ void APCheckCampaignLock()
     if (gAPCampaignId == 4 && gHasAtlantis == true) { hasUnlock = true; }
     if (gAPCampaignId == 5 && gHasNewAtlantis == true) { hasUnlock = true; }
     if (gAPCampaignId == 6 && gHasGoldenGift  == true) { hasUnlock = true; }
-    if (gAPCampaignID == 7 && gHasPillarsOfTheGods == true { hasUnlock = true; }
+    if (gAPCampaignId == 7 && gHasPillarsOfTheGods == true) { hasUnlock = true; }
 
     // Resolve campaign display name once (used by all three message variants).
     string campaignName = "Campaign";
