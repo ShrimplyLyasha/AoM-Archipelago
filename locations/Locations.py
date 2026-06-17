@@ -1758,7 +1758,97 @@ class aomLocationData(enum.IntEnum):
         aomScenarioData.POTG_2,
         aomLocationType.OBJECTIVE,
     )
-
+    #POTG - Stronger Together
+    POTG_3_VICTORY = (
+        global_location_id(aomScenarioData.POTG_3.id, 0),
+        "Victory",
+        aomScenarioData.POTG_3,
+        aomLocationType.VICTORY,
+    )
+    POTG_3_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_3.id, 1),
+        "Completion",
+        aomScenarioData.POTG_3,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_4_VICTORY = (
+        global_location_id(aomScenarioData.POTG_4.id, 0),
+        "Victory",
+        aomScenarioData.POTG_4,
+        aomLocationType.VICTORY,
+    )
+    POTG_4_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_4.id, 1),
+        "Completion",
+        aomScenarioData.POTG_4,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_5_VICTORY = (
+        global_location_id(aomScenarioData.POTG_5.id, 0),
+        "Victory",
+        aomScenarioData.POTG_5,
+        aomLocationType.VICTORY,
+    )
+    POTG_5_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_5.id, 1),
+        "Completion",
+        aomScenarioData.POTG_5,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_6_VICTORY = (
+        global_location_id(aomScenarioData.POTG_6.id, 0),
+        "Victory",
+        aomScenarioData.POTG_6,
+        aomLocationType.VICTORY,
+    )
+    POTG_6_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_6.id, 1),
+        "Completion",
+        aomScenarioData.POTG_6,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_7_VICTORY = (
+        global_location_id(aomScenarioData.POTG_7.id, 0),
+        "Victory",
+        aomScenarioData.POTG_7,
+        aomLocationType.VICTORY,
+    )
+    POTG_7_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_7.id, 1),
+        "Completion",
+        aomScenarioData.POTG_7,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_8_VICTORY = (
+        global_location_id(aomScenarioData.POTG_8.id, 0),
+        "Victory",
+        aomScenarioData.POTG_8,
+        aomLocationType.VICTORY,
+    )
+    POTG_8_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_8.id, 1),
+        "Completion",
+        aomScenarioData.POTG_8,
+        aomLocationType.COMPLETION,
+    )
+    #POTG - Stronger Together
+    POTG_9_VICTORY = (
+        global_location_id(aomScenarioData.POTG_9.id, 0),
+        "Victory",
+        aomScenarioData.POTG_9,
+        aomLocationType.VICTORY,
+    )
+    POTG_9_COMPLETION = (
+        global_location_id(aomScenarioData.POTG_9.id, 1),
+        "Completion",
+        aomScenarioData.POTG_9,
+        aomLocationType.COMPLETION,
+    )
     # ===========================================================================
     # RELICSANITY — one location per garrisoned relic.
     # local_id starts at 10 to leave a buffer above the highest objective local_id.

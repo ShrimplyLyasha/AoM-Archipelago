@@ -418,6 +418,7 @@ const int cEGYPTIAN_SCENARIOS            = 3501;  // "Unlock FotT Egyptian Campa
 const int cNORSE_SCENARIOS               = 3502;  // "Unlock FotT Norse Campaign"
 const int cNEW_ATLANTIS_SCENARIOS        = 3503;  // "Unlock New Atlantis Campaign"
 const int cGOLDEN_GIFT_SCENARIOS         = 3504;  // "Unlock The Golden Gift Campaign"
+const int cPILLARS_OF_THE_GODS           = 3505;  // "Unlock Pillars of the Gods Campaign"
 // cFINAL_SCENARIOS removed (stale) -- Final section uses ATLANTIS_KEY (3510) as unlock signal
 const int cATLANTIS_KEY                  = 3510;
 
@@ -617,6 +618,7 @@ bool gHasNorse     = false;
 bool gHasAtlantis  = false;
 bool gHasNewAtlantis = false;
 bool gHasGoldenGift  = false;
+bool gHasPillarsOfTheGods = false;
 
 const int cAPMajorNone      = 0;
 const int cAPMajorZeus      = 1;
@@ -1204,6 +1206,18 @@ void APReadRandomGod()
     if (gAPScenarioId == 602) { int g = trQuestVarGet("APGod602"); if (g > 0) { gAPMajorGod = g; } }
     if (gAPScenarioId == 603) { int g = trQuestVarGet("APGod603"); if (g > 0) { gAPMajorGod = g; } }
     if (gAPScenarioId == 604) { int g = trQuestVarGet("APGod604"); if (g > 0) { gAPMajorGod = g; } }
+    // Immortal Pillars (701-709)
+    if (gAPScenarioId == 701) { int g = trQuestVarGet("APGod701"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 702) { int g = trQuestVarGet("APGod702"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 703) { int g = trQuestVarGet("APGod703"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 704) { int g = trQuestVarGet("APGod704"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 705) { int g = trQuestVarGet("APGod705"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 706) { int g = trQuestVarGet("APGod706"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 707) { int g = trQuestVarGet("APGod707"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 708) { int g = trQuestVarGet("APGod708"); if (g > 0) { gAPMajorGod = g; } }
+    if (gAPScenarioId == 709) { int g = trQuestVarGet("APGod709"); if (g > 0) { gAPMajorGod = g; } }
+
+
 }
 
 // -----------------------------------------------------------------------
@@ -2503,13 +2517,16 @@ int APGetScenarioStartingAge()
         s == 19 || s == 20 || s == 28 || s == 31 || s == 32) { return (2); }
     // Archaic start
     if (s == 2 || s == 3 || s == 10 || s == 11 || s == 12 ||
-        s == 22 || s == 502) { return (0); }
+        s == 22 || s == 502 || s == 703) { return (0); }
     // Mythic start
-    if (s == 506 || s == 511 || s == 512 || s == 604) { return (3); }
-    // Heroic start (New Atlantis: 501,503-505,507-510; Golden Gift: 601-603)
+    if (s == 506 || s == 511 || s == 512 || s == 604 ||
+        s == 708 || s == 709) { return (3); }
+    // Heroic start (New Atlantis: 501,503-505,507-510; Golden Gift: 601-603;)
+    // Heroic Start (Pillars of the Gods: 704, 706-7;)
     if (s == 501 || s == 503 || s == 504 || s == 505 ||
         s == 507 || s == 508 || s == 509 || s == 510 ||
-        s == 601 || s == 602 || s == 603) { return (2); }
+        s == 601 || s == 602 || s == 603 || s == 704 ||
+        s == 706 || s == 707) { return (2); }
     // Classical start (FotT default + NA502 handled above)
     return (1);
 }
@@ -3542,6 +3559,7 @@ void APCheckCampaignLock()
     if (gAPCampaignId == 4 && gHasAtlantis == true) { hasUnlock = true; }
     if (gAPCampaignId == 5 && gHasNewAtlantis == true) { hasUnlock = true; }
     if (gAPCampaignId == 6 && gHasGoldenGift  == true) { hasUnlock = true; }
+    if (gAPCampaignID == 7 && gHasPillarsOfTheGods == true { hasUnlock = true; }
 
     // Resolve campaign display name once (used by all three message variants).
     string campaignName = "Campaign";
@@ -3551,6 +3569,8 @@ void APCheckCampaignLock()
     if (gAPCampaignId == 4) { campaignName = "Final Scenarios"; }
     if (gAPCampaignId == 5) { campaignName = "New Atlantis"; }
     if (gAPCampaignId == 6) { campaignName = "Golden Gift"; }
+    if (gAPCampaignId == 7) { campaignName = "Pillars of the Gods}"; }
+
 
     bool keysActive = (trQuestVarGet("APScenarioKeysActive") > 0.5);
     bool keyHeld    = true;
@@ -3588,6 +3608,7 @@ void APCheckCampaignLock()
         if (gAPCampaignId == 4) { neededItem = "Atlantis Key"; }
         if (gAPCampaignId == 5) { neededItem = "Unlock New Atlantis Campaign"; }
         if (gAPCampaignId == 6) { neededItem = "Unlock The Golden Gift Campaign"; }
+        if (gAPCampaignId == 7) { neededItem = "Unlock Pillars of the Gods Campaign"; }
         msg = "You need " + neededItem + " to play this";
     }
 
@@ -3599,6 +3620,8 @@ void APCheckCampaignLock()
     if (gAPCampaignId == 4) { trExecuteOnAI(12, "APLocked_Final"); }
     if (gAPCampaignId == 5) { trExecuteOnAI(12, "APLocked_NewAtlantis"); }
     if (gAPCampaignId == 6) { trExecuteOnAI(12, "APLocked_GoldenGift"); }
+    if (gAPCampaignId == 7) { trExecuteOnAI(12, "APLocked_PillarsOfTheGods"); }
+
 
     xsEnableRule("APLockedDelay");
 }
@@ -3970,11 +3993,11 @@ int APGetStartingAgeCount(int scenarioId = 0)
     if (scenarioId == 702) { return 1; }  // Classical (Max Classical)
     if (scenarioId == 703) { return 0; }  // Archaic (Max Heroic)
     if (scenarioId == 704) { return 2; }  // Heroic (Max Heroic)
-    if (scenarioId == 705) { return 1; }  // Classical (Max Default?)
-    if (scenarioId == 706) { return 2; }  // Heroic (Max Default)
-    if (scenarioId == 707) { return 2; }  // Heroic (Max Default, no TC)
-    if (scenarioId == 708) { return 3; }  // Mythic (Max Default)
-    if (scenarioId == 709) { return 3; }  // Mythic (Max Default)
+    if (scenarioId == 705) { return 1; }  // Classical (Max Mythic)
+    if (scenarioId == 706) { return 2; }  // Heroic (Max Mythic)
+    if (scenarioId == 707) { return 2; }  // Heroic (Max Mythic, no TC)
+    if (scenarioId == 708) { return 3; }  // Mythic
+    if (scenarioId == 709) { return 3; }  // Mythic
     return 0;
 }
 
@@ -4528,6 +4551,7 @@ runImmediately
     gHasAtlantis = false;
     gHasNewAtlantis = false;
     gHasGoldenGift  = false;
+    gHasPillarsOfTheGods = false;
     gAPRandomMajorGods = false;
     if (gAPItemCount > 6)
     {
@@ -4543,6 +4567,7 @@ runImmediately
     {
         if (gAPItems[7] == 9005) { gHasNewAtlantis = true; }
         if (gAPItems[8] == 9006) { gHasGoldenGift  = true; }
+        if (gAPItems[9] == 9007) { gHasPillarsOfTheGods  = true; }
     }
 
     APInitScenarioKeys();
