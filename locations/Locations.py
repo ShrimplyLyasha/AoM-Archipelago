@@ -1773,7 +1773,7 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_3_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_3.id, 1),
+        global_location_id(aomScenarioData.POTG_3.id, 2),
         "Reach Nuchou.",
         aomScenarioData.POTG_3,
         aomLocationType.OBJECTIVE,
@@ -1792,13 +1792,13 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_4_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_4.id, 1),
+        global_location_id(aomScenarioData.POTG_4.id, 2),
         "Find the ancient Temple.",
         aomScenarioData.POTG_4,
         aomLocationType.OBJECTIVE,
     )
     POTG_4_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_4.id, 1),
+        global_location_id(aomScenarioData.POTG_4.id, 3),
         "Defeat Chiyou's army to reach the Northern Pillar.",
         aomScenarioData.POTG_4,
         aomLocationType.OBJECTIVE,
@@ -1817,25 +1817,25 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_5_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_5.id, 1),
+        global_location_id(aomScenarioData.POTG_5.id, 2),
         "Protect the Southern Pillar.",
         aomScenarioData.POTG_5,
         aomLocationType.OBJECTIVE,
     )
     POTG_5_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_5.id, 1),
+        global_location_id(aomScenarioData.POTG_5.id, 3),
         "Select a Settlement to Start the mission.",
         aomScenarioData.POTG_5,
         aomLocationType.OBJECTIVE,
     )
     POTG_5_OBJ_3 = (
-        global_location_id(aomScenarioData.POTG_5.id, 1),
+        global_location_id(aomScenarioData.POTG_5.id, 4),
         "Destroy the Giant Siege Crossbows.",
         aomScenarioData.POTG_5,
         aomLocationType.OBJECTIVE,
     )
     POTG_5_OBJ_4 = (
-        global_location_id(aomScenarioData.POTG_5.id, 1),
+        global_location_id(aomScenarioData.POTG_5.id, 5),
         "Defeat Nuchou.",
         aomScenarioData.POTG_5,
         aomLocationType.OBJECTIVE,
@@ -1854,13 +1854,13 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_6_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_6.id, 1),
+        global_location_id(aomScenarioData.POTG_6.id, 2),
         "Prevent Huang Zhaowu from destroying the pillar.",
         aomScenarioData.POTG_6,
         aomLocationType.OBJECTIVE,
     )
     POTG_6_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_6.id, 1),
+        global_location_id(aomScenarioData.POTG_6.id, 3),
         "Bring Yan Feifeng to the Pillar before Huang Zhaowu destroys it.",
         aomScenarioData.POTG_6,
         aomLocationType.OBJECTIVE,
@@ -1879,61 +1879,61 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_7_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 2),
         "Find the Red Stone (Greek).",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 3),
         "Find the Black Stone (Atlantean).",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_3 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 4),
         "Find the Blue Stone (Norse).",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_4 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 5),
         "Find the Yellow Stone (Egyptian).",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_5 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 6),
         "Find the White Stone (Chinese).",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_6 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 7),
         "Defeat Xiaoli to retrieve the White Stone.",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_7 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 8),
         "Protect the Mirror Tower to get the Black Stone.",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_8 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 9),
         "Defeat Halogi to collect the Blue Stone.",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_9 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 10),
         "Defeat the defenders of the enemy fortress to capture the Yellow Stone.",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
     )
     POTG_7_OBJ_10 = (
-        global_location_id(aomScenarioData.POTG_7.id, 1),
+        global_location_id(aomScenarioData.POTG_7.id, 11),
         "Destroy statues to find the Red Stone.",
         aomScenarioData.POTG_7,
         aomLocationType.OBJECTIVE,
@@ -1952,13 +1952,13 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_8_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_8.id, 1),
-        "Request Nuwa's help by rebuilding her wonder.",
+        global_location_id(aomScenarioData.POTG_8.id, 2),
+        "Request Nuwa's help by rebuilding her Wonder.",
         aomScenarioData.POTG_8,
         aomLocationType.OBJECTIVE,
     )
     POTG_8_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_8.id, 1),
+        global_location_id(aomScenarioData.POTG_8.id, 3),
         "Nuwa's Wonder must not be destroyed.",
         aomScenarioData.POTG_8,
         aomLocationType.OBJECTIVE,
@@ -1977,25 +1977,25 @@ class aomLocationData(enum.IntEnum):
         aomLocationType.COMPLETION,
     )
     POTG_9_OBJ_1 = (
-        global_location_id(aomScenarioData.POTG_9.id, 1),
+        global_location_id(aomScenarioData.POTG_9.id, 2),
         "Nuwa's Wonder must not be destroyed.",
         aomScenarioData.POTG_9,
         aomLocationType.OBJECTIVE,
     )
     POTG_9_OBJ_2 = (
-        global_location_id(aomScenarioData.POTG_9.id, 1),
+        global_location_id(aomScenarioData.POTG_9.id, 3),
         "Empower the Titan Gate with Sages to summon Xingtian.",
         aomScenarioData.POTG_9,
         aomLocationType.OBJECTIVE,
     )
     POTG_9_OBJ_3 = (
-        global_location_id(aomScenarioData.POTG_9.id, 1),
+        global_location_id(aomScenarioData.POTG_9.id, 4),
         "Defeat Chiyou.",
         aomScenarioData.POTG_9,
         aomLocationType.OBJECTIVE,
     )
     POTG_9_OBJ_4 = (
-        global_location_id(aomScenarioData.POTG_9.id, 1),
+        global_location_id(aomScenarioData.POTG_9.id, 5),
         "Defeat Huang Zhaowu.",
         aomScenarioData.POTG_9,
         aomLocationType.OBJECTIVE,

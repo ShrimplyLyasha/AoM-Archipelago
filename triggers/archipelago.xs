@@ -1801,10 +1801,27 @@ string APGetCheckText(int id = 0)
     if (id == 3937227) {return "Bring Yan Feifeng to the Pillar before Huang Zhaowu destroys it."; }
     //POTG_7 - Shattered Underworlds
     if (id == 3937324) { return "Scenario Victory."; }
+    if (id == 3937326) { return "Find the Red Stone (Greek)."; }
+    if (id == 3937327) { return "Find the Black Stone (Atlantean)."; }
+    if (id == 3937328) { return "Find the Blue Stone (Norse)."; }
+    if (id == 3937329) { return "Find the Yellow Stone (Egyptian)."; }
+    if (id == 3937330) { return "Find the White Stone (Chinese)."; }
+    if (id == 3937331) { return "Defeat Xiaoli to retrieve the White Stone."; }
+    if (id == 3937332) { return "Protect the Mirror Tower to get the Black Stone."; }
+    if (id == 3937333) { return "Defeat Halogi to collect the blue stone."; }
+    if (id == 3937334) { return "Defeat the defenders of the enemy fortress to capture the Yellow Stone."; }
+    if (id == 3937335) { return "Destroy statues to find the red stone."; }
     //POTG_8 - Divine Intervention
     if (id == 3937424) { return "Scenario Victory."; }
+    if (id == 3937426) { return "Request Nuwa's help by rebuilding her Wonder."; }
+    if (id == 3937427) { return "Nuwa's Wonder must not be destroyed."; }
     //POTG_9 - Duel of the Deathless
     if (id == 3937524) { return "Scenario Victory."; }
+    if (id == 3937526) { return "Nuwa's Wonder must not be destroyed."; }
+    if (id == 3937527) { return "Empower the Titan Gate with Sages to summon Xingtian."; }
+    if (id == 3937528) { return "Defeat Chiyou."; }
+    if (id == 3937529) { return "Defeat Huang Zhaowu."; }
+
 
     // ---- Optional objectives (local_id >= 40) ----
     if (id == 3876764) { return "Train Archers."; }

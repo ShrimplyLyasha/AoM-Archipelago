@@ -384,6 +384,7 @@ _CAMPAIGN_TILE_COLORS: dict[str, tuple[float, float, float]] = {
     "FOTT_FINAL":    (1.0,   0.0,    0.0),
     "GOLDEN_GIFT":   (0.855, 0.65,   0.1255),
     "NEW_ATLANTIS":  (0.0,   1.0,    1.0),
+    "PILLARS_OF_THE_GODS": (0.922, 0.643, 0.878),
 }
 
 # Campaigns whose tile/tab background is bright enough (yellow, teal) that a
@@ -1838,6 +1839,7 @@ class AoMManager(GameManager):
         "FOTT_FINAL":    "FF2222",
         "GOLDEN_GIFT":   "DAA520",
         "NEW_ATLANTIS":  "00FFFF",
+        "PILLARS_OF_THE_GODS": "F7B8FF",
     }
 
     def build_relics_tab(self) -> None:

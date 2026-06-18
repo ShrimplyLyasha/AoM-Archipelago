@@ -542,7 +542,7 @@ _SPHERE_ONE_BY_CAMPAIGN: dict[str, list[int]] = {
     "FOTT_FINAL":    [],
     "NEW_ATLANTIS":  [506, 507],
     "GOLDEN_GIFT":   [604],
-    "PILLARS_OF_THE_GODS": [701, 702]
+    "PILLARS_OF_THE_GODS": [701, 702, 707]
 }
 
 
