@@ -630,7 +630,7 @@ class aomWorld(World):
             StartingScenarios.option_egyptian:     Campaigns.aomCampaignData.FOTT_EGYPTIAN,
             StartingScenarios.option_norse:        Campaigns.aomCampaignData.FOTT_NORSE,
             StartingScenarios.option_new_atlantis: Campaigns.aomCampaignData.NEW_ATLANTIS,
-            StartingScenarios.option_pillars: Campaigns.aomCampaignData.PILLARS_OF_THE_GODS,
+            StartingScenarios.option_pillars:      Campaigns.aomCampaignData.PILLARS_OF_THE_GODS,
         }
         return mapping.get(value, Campaigns.aomCampaignData.FOTT_GREEK)
 
