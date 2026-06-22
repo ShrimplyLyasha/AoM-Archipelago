@@ -57,6 +57,7 @@
 import asyncio
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -83,6 +84,57 @@ from ..items.Items import (
 )
 
 logger = logging.getLogger("Client")
+
+
+def _is_windows() -> bool:
+    return os.name == "nt" or sys.platform.startswith("win")
+
+
+def _split_segments(*segments) -> list:
+    r"""Flatten path segments, splitting on both `/` and `\` so a value like
+    "Game\AI" becomes ["Game", "AI"] on every OS.  On Linux a literal
+    backslash is a valid filename character, so `Path / "Game\AI"` would
+    otherwise create a single bogus component named `Game\AI`."""
+    parts: list = []
+    for seg in segments:
+        for piece in str(seg).replace("\\", "/").split("/"):
+            if piece:
+                parts.append(piece)
+    return parts
+
+
+def resolve_ci(base, *segments) -> Path:
+    """Join `base` with `segments`, matching existing components case-insensitively.
+
+    The AoMR game runs under Proton/Wine on Linux and may create folders/files
+    (`temp`, `Logs`, `trigger`, `config`, `Game/AI`, the AI echo log) whose case
+    differs from our literal strings.  On a case-sensitive Linux filesystem a
+    literal-cased lookup then misses the game's real file — the client tails an
+    empty phantom log and never sees AP_CHECK lines.  This resolves each level
+    to the real on-disk name when present, falling back to the literal segment
+    when the path does not exist yet (so callers can still create it).
+
+    On Windows the filesystem is already case-insensitive, so we just join.
+    """
+    p = Path(base)
+    parts = _split_segments(*segments)
+    if _is_windows():
+        return p.joinpath(*parts)
+    for seg in parts:
+        if (p / seg).exists():
+            p = p / seg
+            continue
+        match = None
+        seg_lower = seg.lower()
+        try:
+            for entry in os.scandir(p):
+                if entry.name.lower() == seg_lower:
+                    match = entry.name
+                    break
+        except OSError:
+            match = None
+        p = p / (match if match is not None else seg)
+    return p
 
 # -----------------------------------------------------------------------
 # Item → proto unit name mapping
@@ -333,7 +385,7 @@ class AoMGameContext:
 
     @property
     def trigger_folder(self) -> Path:
-        return Path(self.user_folder) / TRIGGER_FOLDER_NAME
+        return resolve_ci(self.user_folder, TRIGGER_FOLDER_NAME)
 
     @property
     def session_root(self) -> Path:
@@ -365,19 +417,19 @@ class AoMGameContext:
     def ai_output_file(self) -> Path:
         # user_folder is e.g. C:/Users/Philip/Games/Age of Mythology Retold/76561198039446386
         # logs are at:         C:/Users/Philip/Games/Age of Mythology Retold/temp/Logs
-        return Path(self.user_folder).parent / "temp" / "Logs" / AI_OUTPUT_FILENAME
+        return resolve_ci(Path(self.user_folder).parent, "temp", "Logs", AI_OUTPUT_FILENAME)
 
     @property
     def aom_state_file(self) -> Path:
-        return self.trigger_folder / AOM_STATE_FILENAME
+        return resolve_ci(self.trigger_folder, AOM_STATE_FILENAME)
 
     def ap_ai_init_file(self, mods_local_dir: Path) -> Path:
         # ap_ai_init.xs must live in the user-level Game\AI folder.
-        return Path(self.user_folder) / "Game" / "AI" / APAI_INIT_FILENAME
+        return resolve_ci(self.user_folder, "Game", "AI", APAI_INIT_FILENAME)
 
     def ap_ai_runtime_file(self, mods_local_dir: Path) -> Path:
         # ap_ai_runtime.xs must live in the user-level Game\AI folder.
-        return Path(self.user_folder) / "Game" / "AI" / APAI_RUNTIME_FILENAME
+        return resolve_ci(self.user_folder, "Game", "AI", APAI_RUNTIME_FILENAME)
 
 
 # -----------------------------------------------------------------------

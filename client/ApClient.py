@@ -63,7 +63,7 @@ from NetUtils import ClientStatus, NetworkItem
 
 from ..items.Items import aomItemData
 from .ApGui import AoMManager
-from .GameClient import AoMGameContext, game_loop, generate_ap_ai_xs, on_items_received
+from .GameClient import AoMGameContext, game_loop, generate_ap_ai_xs, on_items_received, resolve_ci
 
 logger = logging.getLogger("Client")
 
@@ -111,10 +111,10 @@ def _install_trigger_files(user_folder: str) -> None:
     try:
         with zipfile.ZipFile(apworld_path) as zf:
             for filename, subfolder in _TRIGGER_FILES:
-                dest_dir = Path(user_folder) / subfolder
+                dest_dir = resolve_ci(user_folder, subfolder)
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 source = f"aom/triggers/{filename}"
-                dest   = dest_dir / filename
+                dest   = resolve_ci(dest_dir, filename)
                 try:
                     dest.write_bytes(zf.read(source))
                     installed.append(filename)
@@ -151,7 +151,7 @@ def _ensure_user_cfg(user_folder: str) -> None:
         logger.warning("user.cfg check skipped: user folder not set.")
         return
 
-    cfg_path = Path(user_folder) / "config" / "user.cfg"
+    cfg_path = resolve_ci(user_folder, "config", "user.cfg")
 
     # Read existing content if the file exists
     existing_lines: set[str] = set()
@@ -1759,13 +1759,20 @@ class AoMContext(CommonContext):
         # which could still cause current-session checks to be missed if the
         # offset/session state became misaligned. Truncating here lets the
         # runtime parser read the recreated log from byte 0.
+        # Only truncate an EXISTING log. On case-sensitive filesystems (Linux),
+        # creating the file ourselves at a literal-cased path the game doesn't
+        # use would leave us tailing a phantom empty log forever. If it does not
+        # exist yet, leave it — the game (Proton/Wine) creates it, and the
+        # case-insensitive resolver in ai_output_file finds the real file later.
         log_file = self.game_ctx.ai_output_file
-        try:
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            log_file.write_bytes(b"")
-            logger.info(f"Cleared AI output log for new session: {log_file}")
-        except Exception as ex:
-            logger.warning(f"Failed to clear AI output log {log_file}: {ex}")
+        if log_file.exists():
+            try:
+                log_file.write_bytes(b"")
+                logger.info(f"Cleared AI output log for new session: {log_file}")
+            except Exception as ex:
+                logger.warning(f"Failed to clear AI output log {log_file}: {ex}")
+        else:
+            logger.info(f"AI output log not present yet; will read it once the game creates it: {log_file}")
 
         # After truncating the log, always parse from the beginning of the new
         # session output.
