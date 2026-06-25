@@ -202,9 +202,9 @@ class aomWebWorld(WebWorld):
             FottNorseCampaign,
             NewAtlantis,
             GoldenGift,
-            PillarsOfTheGods,
+            # HOTFIX: PillarsOfTheGods + OptionalObjectivesAreLocations hidden
+            # (Visibility.none) until fully wired — restore here when ready.
             Relicsanity,
-            OptionalObjectivesAreLocations,
             ExcludeScenario30,
             MaxKeysOnKeyrings,
         ]),
@@ -792,9 +792,12 @@ class aomWorld(World):
 
         # Optional-objective-sanity flag — Regions.py filters OPTIONAL_OBJECTIVE
         # locations out when off, and the location counts below honor it.
-        self.optional_objectives_enabled: bool = bool(
-            self.options.optional_objectives_are_locations.value
-        )
+        # HOTFIX: optional objectives are not fully wired yet — force OFF
+        # regardless of the YAML option.  Revert to the line below when ready.
+        # self.optional_objectives_enabled: bool = bool(
+        #     self.options.optional_objectives_are_locations.value
+        # )
+        self.optional_objectives_enabled: bool = False
 
         # Local-filler staging list: filler items destined for local-only
         # placement are collected here during create_items, then placed by
@@ -827,8 +830,12 @@ class aomWorld(World):
             self.disabled_campaigns.add(aomCampaignData.NEW_ATLANTIS)
         if not bool(self.options.golden_gift_campaign.value):
             self.disabled_campaigns.add(aomCampaignData.GOLDEN_GIFT)
-        if not bool(self.options.pillars_of_the_gods.value):
-            self.disabled_campaigns.add(aomCampaignData.PILLARS_OF_THE_GODS)
+        # HOTFIX: Pillars of the Gods is not fully wired yet — force-disable
+        # regardless of the YAML option.  Revert to the option check below
+        # (uncomment) when the campaign is ready to ship.
+        # if not bool(self.options.pillars_of_the_gods.value):
+        #     self.disabled_campaigns.add(aomCampaignData.PILLARS_OF_THE_GODS)
+        self.disabled_campaigns.add(aomCampaignData.PILLARS_OF_THE_GODS)
 
         # If the chosen starting campaign is disabled, fall back to the first
         # enabled FOTT campaign so the player has somewhere to start.
@@ -849,9 +856,23 @@ class aomWorld(World):
         # exclude_scenario_30 option (default on).
         from .locations.Scenarios import aomScenarioData as _ScenData
         self.excluded_scenarios: set[int] = set()
+        # Scenario 30 ("All Is Not Lost") is the highest point gate.  When
+        # exclude_scenario_30 is on we keep it out of progression, but HOW
+        # depends on whether scenario keys are in use:
+        #   * keys on  -> no key is generated for it, so it is unreachable;
+        #     fully exclude it (no region/locations/completion/key).
+        #   * keys off -> access is governed only by the campaign-unlock item,
+        #     which can't gate a single scenario, so the player can always
+        #     launch it.  Keep its locations but force them filler-only (see
+        #     filler_only_scenarios) so no progression is ever required behind
+        #     it and beating it just yields filler.
+        self.filler_only_scenarios: set[int] = set()
         if bool(self.options.exclude_scenario_30.value) and \
                 _ScenData.FOTT_30.campaign not in self.disabled_campaigns:
-            self.excluded_scenarios.add(_ScenData.FOTT_30.global_number)
+            if int(self.options.max_keys_on_keyrings.value) > 0:
+                self.excluded_scenarios.add(_ScenData.FOTT_30.global_number)
+            else:
+                self.filler_only_scenarios.add(_ScenData.FOTT_30.global_number)
 
         # Multiworld-size point-threshold scale: eases per-scenario point gates
         # in large asyncs (where filler point items are spread thin) while
@@ -2008,6 +2029,7 @@ class aomWorld(World):
         relicsanity_on = self.relicsanity_enabled
         optional_objectives_on = self.optional_objectives_enabled
         excluded_scenarios = self.excluded_scenarios
+        filler_only_scenarios = self.filler_only_scenarios
         visible_location_count = (
             sum(1 for loc in Locations.aomLocationData
                 if loc.type != Locations.aomLocationType.COMPLETION
@@ -2028,6 +2050,7 @@ class aomWorld(World):
                 if loc.type == Locations.aomLocationType.VICTORY
                 and loc.scenario.campaign not in disabled_campaigns
                 and loc.scenario.global_number not in excluded_scenarios
+                and loc.scenario.global_number not in filler_only_scenarios
             ) - 1
             _n_starting_gems = int(getattr(self, "starting_gems_from_pool", 0))
             locked_gem_count = max(0, locked_gem_count - _n_starting_gems)
@@ -2068,6 +2091,18 @@ class aomWorld(World):
             progression_legal_count += sum(
                 len(slots) for slots in self.shop_progression_slots.values()
             )
+
+        # Filler-only scenarios (exclude_scenario_30 with scenario keys off):
+        # their fillable locations are forced filler-only in Rules.py, so they
+        # can never host progression — drop them from the progression budget.
+        if filler_only_scenarios:
+            progression_legal_count -= sum(
+                1 for loc in Locations.aomLocationData
+                if loc.type != Locations.aomLocationType.COMPLETION
+                and loc.scenario.global_number in filler_only_scenarios
+                and loc.scenario.campaign not in disabled_campaigns
+                and (relicsanity_on or loc.type != Locations.aomLocationType.RELIC)
+                and (optional_objectives_on or loc.type != Locations.aomLocationType.OPTIONAL_OBJECTIVE))
 
         # Scenario unlock items.
         #   max_keys_on_keyrings == 0 -> nothing pushed (feature disabled).

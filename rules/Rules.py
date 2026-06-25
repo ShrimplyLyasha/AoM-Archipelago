@@ -1579,6 +1579,38 @@ def exclude_scenario_32_locations(world) -> None:
         location.progress_type = LocationProgressType.EXCLUDED
 
 
+def set_filler_only_scenario_locations(world) -> None:
+    """exclude_scenario_30 with scenario keys OFF: the scenario stays reachable
+    (the campaign-unlock item can't gate a single scenario), so force every
+    fillable location inside it to hold filler/trap only.  This guarantees no
+    progression is ever required behind it — beating it just yields filler.
+    Mirrors the shop filler-only treatment in `set_shop_rules`.
+
+    Called from `set_rules`.
+    """
+    filler_only = getattr(world, "filler_only_scenarios", set())
+    if not filler_only:
+        return
+    player    = world.player
+    multiworld = world.multiworld
+    relicsanity_on = bool(getattr(world, "relicsanity_enabled", False))
+    optional_objectives_on = bool(getattr(world, "optional_objectives_enabled", False))
+    for location_data in aomLocationData:
+        if location_data.scenario.global_number not in filler_only:
+            continue
+        if location_data.type == aomLocationType.COMPLETION:
+            continue
+        if not relicsanity_on and location_data.type == aomLocationType.RELIC:
+            continue
+        if not optional_objectives_on and location_data.type == aomLocationType.OPTIONAL_OBJECTIVE:
+            continue
+        location = multiworld.get_location(location_data.global_name(), player)
+        location.progress_type = LocationProgressType.EXCLUDED
+        location.item_rule = lambda item: item.classification in (
+            ItemClassification.filler, ItemClassification.trap
+        )
+
+
 # --------------------------------------------------
 # Item placement restrictions
 # --------------------------------------------------
@@ -1660,11 +1692,13 @@ def place_gems(world) -> None:
     multiworld = world.multiworld
     disabled_campaigns = getattr(world, "disabled_campaigns", set())
     excluded_scenarios = getattr(world, "excluded_scenarios", set())
+    filler_only_scenarios = getattr(world, "filler_only_scenarios", set())
 
     eligible = [
         s for s in aomScenarioData
         if s != aomScenarioData.FOTT_32 and s.campaign not in disabled_campaigns
         and s.global_number not in excluded_scenarios
+        and s.global_number not in filler_only_scenarios
     ]
 
     # Pick which Victories to SKIP (swapped to free-fill).  Deterministic via
@@ -1839,6 +1873,7 @@ def set_rules(world) -> None:
     place_gems(world)
     place_progressive_shop_info(world)
     place_shop_e_items(world)
+    set_filler_only_scenario_locations(world)
     set_section_rules(world)
     set_scenario_age_and_point_rules(world)
     set_scenario_key_rules(world)

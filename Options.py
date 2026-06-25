@@ -47,7 +47,7 @@
 
 from dataclasses import dataclass
 
-from Options import Choice, PerGameCommonOptions, Range, StartInventoryPool, Toggle
+from Options import Choice, PerGameCommonOptions, Range, StartInventoryPool, Toggle, Visibility
 
 
 # ################
@@ -397,6 +397,8 @@ class PillarsOfTheGods(Toggle):
     internal_name = "pillars_of_the_gods"
     display_name = "Pillars of The Gods Campaign"
     default = 0
+    # HOTFIX: campaign not fully wired yet — hide from players. Remove when ready.
+    visibility = Visibility.none
 
 class MaxKeysOnKeyrings(Range):
     """Maximum number of Scenario Keys carried by a Key Ring item.
@@ -433,14 +435,15 @@ class OptionalObjectivesAreLocations(Toggle):
     internal_name = "optional_objectives_are_locations"
     display_name  = "Optional Objectives Are Locations"
     default = 0
+    # HOTFIX: feature not fully wired yet — hide from players. Remove when ready.
+    visibility = Visibility.none
 
 
 class ExcludeScenario30(Toggle):
     """Exclude scenario 30, "All Is Not Lost", from the world.
 
-When enabled (default), scenario 30 and ALL of its locations — including its relics and optional objectives when those are turned on — are removed from the pool.
-Scenario 30 has the highest point requirement of any scenario, so dropping it noticeably lowers item-placement pressure in large multiworlds.
-Has no effect when the Norse campaign is already disabled."""
+When enabled, all locations in scenario 30 are filler.
+"""
     internal_name = "exclude_scenario_30"
     display_name  = "Exclude 30. All Is Not Lost"
     default = 1
@@ -449,7 +452,7 @@ Has no effect when the Norse campaign is already disabled."""
 class GemsAsFiller(Toggle):
     """Allow Gems to be used as filler items.
 
-Normally Gems are awarded only by Victory locations. When enabled, the world may also pad filler slots with Gems — only relevant in large multiworlds that need extra filler.
+Normally Gems are awarded only by Victory locations. When enabled, the world may also pad filler slots with Gems.
 Has no effect when the Gem Shop is disabled."""
     internal_name = "gems_as_filler"
     display_name  = "Gems As Filler"
