@@ -1710,7 +1710,7 @@ class aomLocationData(enum.IntEnum):
         aomScenarioData.POTG_1,
         aomLocationType.OBJECTIVE,
     )
-    POTG_1_OBJ_ = (
+    POTG_1_OBJ_2 = (
         global_location_id(aomScenarioData.POTG_1.id, 3),
         "Find the imprisoned hero",
         aomScenarioData.POTG_1,
@@ -1722,18 +1722,7 @@ class aomLocationData(enum.IntEnum):
         aomScenarioData.POTG_1,
         aomLocationType.OBJECTIVE,
     )
-    POTG_1_OBJ_4 = (
-        global_location_id(aomScenarioData.POTG_1.id, 5),
-        "Save allied soldiers",
-        aomScenarioData.POTG_1,
-        aomLocationType.OBJECTIVE,
-    )
-    POTG_1_OBJ_5 = (
-        global_location_id(aomScenarioData.POTG_1.id, 6),
-        "Use the Pioneer's lantern to discover what is behind the wall",
-        aomScenarioData.POTG_1,
-        aomLocationType.OBJECTIVE,
-    )
+
     #POTG_2 - Houyi's Pride
     POTG_2_VICTORY = (
         global_location_id(aomScenarioData.POTG_2.id, 0),
@@ -2003,6 +1992,8 @@ class aomLocationData(enum.IntEnum):
     # ===========================================================================
     # RELICSANITY — one location per garrisoned relic.
     # local_id starts at 10 to leave a buffer above the highest objective local_id.
+    # EXCEPTION: local_id starts at 12 for POTG because mission 7 has an absurd number
+    # of main objectives
     # 174 total: FoTT 103, New Atlantis 51, Golden Gift 20.
     # ===========================================================================
 
@@ -2258,6 +2249,9 @@ class aomLocationData(enum.IntEnum):
     GG_4_RELIC_5 = (global_location_id(aomScenarioData.GG_4.id, 14), "Relic 5: Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
     GG_4_RELIC_6 = (global_location_id(aomScenarioData.GG_4.id, 15), "Relic 6: Shrine West of Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
 
+    #POTG 1 relics
+
+
     # ===========================================================================
     # OPTIONAL OBJECTIVES — secondary in-mission objectives, one location each.
     # Only generated when the `optional_objectives_are_locations` YAML option is on
@@ -2364,7 +2358,9 @@ class aomLocationData(enum.IntEnum):
     # NA_9: NA 9. Rampage
     NA_9_OPT_1 = (global_location_id(aomScenarioData.NA_9.id, 40), "Protect Folstag's Temples to receive Frost Giants.", aomScenarioData.NA_9, aomLocationType.OPTIONAL_OBJECTIVE)
 
-
+    #POTG_1: POTG 1. Shennong's Chosen
+    POTG_1_OPT_1 = (global_location_id(aomScenarioData.POTG_1.id, 40), "Save allied soldiers", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_1_OBJ_5 = (global_location_id(aomScenarioData.POTG_1.id, 41), "Use the Pioneer's lantern to discover what is behind the wall", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
 
 
 # --- Lookup tables built once at import time ---

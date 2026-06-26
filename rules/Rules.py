@@ -339,15 +339,15 @@ _SCENARIO_DATA: dict[int, tuple[int, int, float, bool, bool]] = {
     # 601,602 age-capped @Heroic; 603 heroic-floor (Mythic via 3 unlocks);
     # 604 points-only gate (was always-accessible). UPDATE FOR POTG
     # ---------------------------------------------------------------------------
-    701: (2, 2, 0.0, False, False),  #age capped @ heroic, but no build
-    702: (2, 0, 0.0, False, False),  #capped @ classical
+    701: (2, 2, 0.0, True, False),  #age capped @ heroic, but no build
+    702: (2, 0, 0.0, True, False),  #capped @ classical
     703: (1, 2, 0.0, False, False),  #build to heroic
-    704: (3, 0, 0.0, False, False),  #capped @ heroic
+    704: (3, 0, 2.0, False, False),  #capped @ heroic
     705: (2, 3, 0.0, False, False),  #classical to mythic
-    706: (3, 3, 0.0, False, False),  #heroic to mythic
-    707: (3, 3, 0.0, False, False),  #heroic to mythic, no build
-    708: (4, 0, 0.0, False, False),  #start at mythic
-    709: (4, 0, 0.0, False, False),  #start at mythic
+    706: (3, 3, 12.0, False, False),  #heroic to mythic
+    707: (3, 3, 0.0, True, False),  #heroic to mythic, no build
+    708: (4, 0, 14.0, False, True),  #start at mythic
+    709: (4, 0, 18.0, False, True),  #start at mythic
 }
 
 _VANILLA_CIV: dict[int, str] = {
