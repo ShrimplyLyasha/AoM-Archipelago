@@ -2249,9 +2249,16 @@ class aomLocationData(enum.IntEnum):
     GG_4_RELIC_5 = (global_location_id(aomScenarioData.GG_4.id, 14), "Relic 5: Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
     GG_4_RELIC_6 = (global_location_id(aomScenarioData.GG_4.id, 15), "Relic 6: Shrine West of Center Lake Temple", aomScenarioData.GG_4, aomLocationType.RELIC)
 
-    #POTG 1 relics
-
-
+    #POTG 3 relics (1 and 2 have no relics) *POTG relics start at 12 due to abundance of objectives in POTG_7
+    POTG_3_RELIC_1 = (global_location_id(aomScenarioData.POTG_3.id, 12), "Relic 1: Southwest of Starting Base.", aomScenarioData.POTG_3, aomLocationType.RELIC)
+    POTG_3_RELIC_2 = (global_location_id(aomScenarioData.POTG_3.id, 13), "Relic 2: Outside Western Walls of West Camp.", aomScenarioData.POTG_3, aomLocationType.RELIC)
+    POTG_3_RELIC_3 = (global_location_id(aomScenarioData.POTG_3.id, 14), "Relic 3: At Pillar Wreckage.", aomScenarioData.POTG_3, aomLocationType.RELIC) #- Relic spawns in after start, need to figure out how to handle this
+    #POTG 4 relic
+    POTG_4_RELIC_1 = (global_location_id(aomScenarioData.POTG_4.id, 12), "Relic 1: Southwest of Crossroads.", aomScenarioData.POTG_4, aomLocationType.RELIC)
+    #POTG 6 relic
+    POTG_6_RELIC_1 = (global_location_id(aomScenarioData.POTG_6.id, 12), "Relic 1: Northeast island.", aomScenarioData.POTG_6, aomLocationType.RELIC)
+    # POTG 8 relic
+    POTG_8_RELIC_1 = (global_location_id(aomScenarioData.POTG_8.id, 12), "Relic 1: Southeast of base.", aomScenarioData.POTG_8, aomLocationType.RELIC)
     # ===========================================================================
     # OPTIONAL OBJECTIVES — secondary in-mission objectives, one location each.
     # Only generated when the `optional_objectives_are_locations` YAML option is on
@@ -2359,9 +2366,34 @@ class aomLocationData(enum.IntEnum):
     NA_9_OPT_1 = (global_location_id(aomScenarioData.NA_9.id, 40), "Protect Folstag's Temples to receive Frost Giants.", aomScenarioData.NA_9, aomLocationType.OPTIONAL_OBJECTIVE)
 
     #POTG_1: POTG 1. Shennong's Chosen
-    POTG_1_OPT_1 = (global_location_id(aomScenarioData.POTG_1.id, 40), "Save allied soldiers", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_1_OBJ_5 = (global_location_id(aomScenarioData.POTG_1.id, 41), "Use the Pioneer's lantern to discover what is behind the wall", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
-
+    POTG_1_OPT_1 = (global_location_id(aomScenarioData.POTG_1.id, 40), "Save allied soldiers.", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_1_OPT_2 = (global_location_id(aomScenarioData.POTG_1.id, 41), "Use the Pioneer's lantern to discover what is behind the wall.", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_2: POTG 2. Houyi's Pride
+    POTG_2_OPT_1 = (global_location_id(aomScenarioData.POTG_2.id, 40), "Explore the area to find hiding Peasants.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_2_OPT_2 = (global_location_id(aomScenarioData.POTG_2.id, 41), "Add a Tower or Training Yard to at least one of your Military Buildings.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_2_OPT_3 = (global_location_id(aomScenarioData.POTG_2.id, 42), "Capture the Northern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_2_OPT_4 = (global_location_id(aomScenarioData.POTG_2.id, 43), "Capture the Southern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_3: POTG 3. Stronger Together
+    POTG_3_OPT_1 = (global_location_id(aomScenarioData.POTG_3.id, 40), "Connect two buildings to the Favoured Land.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_3_OPT_2 = (global_location_id(aomScenarioData.POTG_3.id, 41), "Destroy the East Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_3_OPT_3 = (global_location_id(aomScenarioData.POTG_3.id, 42), "Capture the West Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_4: POTG 4. The God Trap
+    POTG_4_OPT_1 = (global_location_id(aomScenarioData.POTG_4.id, 40), "Liberate Allies from Chiyou's Scouts.", aomScenarioData.POTG_4, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_4_OPT_2 = (global_location_id(aomScenarioData.POTG_4.id, 41), "Find Shennong's Statues.", aomScenarioData.POTG_4, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_6: POTG 6. Reality's Collapse
+    POTG_6_OPT_1 = (global_location_id(aomScenarioData.POTG_6.id, 40), "Destroy the West Camp's Town Center.", aomScenarioData.POTG_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_6_OPT_2 = (global_location_id(aomScenarioData.POTG_6.id, 41), "Destroy the Center Camp's Town Center.", aomScenarioData.POTG_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_6_OPT_3 = (global_location_id(aomScenarioData.POTG_6.id, 42), "Destroy the East Camp's Town Center.", aomScenarioData.POTG_6, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_7: POTG 7. Shattered Underworlds
+    POTG_7_OPT_1 = (global_location_id(aomScenarioData.POTG_7.id, 40), "Find and collect three sources of coral energy in the seabeds.", aomScenarioData.POTG_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_7_OPT_2 = (global_location_id(aomScenarioData.POTG_7.id, 41), "Capture Dwarven Armories for upgrades.", aomScenarioData.POTG_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_7_OPT_3 = (global_location_id(aomScenarioData.POTG_7.id, 42), "Search for Frost Giants to help you later.", aomScenarioData.POTG_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_7_OPT_4 = (global_location_id(aomScenarioData.POTG_7.id, 43), "Liberate Dwarves to join your army.", aomScenarioData.POTG_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_7_OPT_5 = (global_location_id(aomScenarioData.POTG_7.id, 44), "Cleanse three corrupted monuments.", aomScenarioData.POTG_7, aomLocationType.OPTIONAL_OBJECTIVE)
+    #POTG_8: POTG 8. Divine Intervention
+    POTG_8_OPT_1 = (global_location_id(aomScenarioData.POTG_8.id, 40), "Bring 3 Kuafus to Nuwa's Temple.", aomScenarioData.POTG_8, aomLocationType.OPTIONAL_OBJECTIVE)
+    # POTG_9: POTG 9. Duel of the Deathless
+    POTG_9_OPT_1 = (global_location_id(aomScenarioData.POTG_9.id, 40), "Search for reinforcements from the underworld.", aomScenarioData.POTG_9, aomLocationType.OPTIONAL_OBJECTIVE)
 
 # --- Lookup tables built once at import time ---
 # All four maps are built by walking `aomLocationData`.  Adding a new location
