@@ -2370,13 +2370,11 @@ class aomLocationData(enum.IntEnum):
     POTG_1_OPT_2 = (global_location_id(aomScenarioData.POTG_1.id, 41), "Use the Pioneer's lantern to discover what is behind the wall.", aomScenarioData.POTG_1, aomLocationType.OPTIONAL_OBJECTIVE)
     #POTG_2: POTG 2. Houyi's Pride
     POTG_2_OPT_1 = (global_location_id(aomScenarioData.POTG_2.id, 40), "Explore the area to find hiding Peasants.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_2_OPT_2 = (global_location_id(aomScenarioData.POTG_2.id, 41), "Add a Tower or Training Yard to at least one of your Military Buildings.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_2_OPT_3 = (global_location_id(aomScenarioData.POTG_2.id, 42), "Capture the Northern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_2_OPT_4 = (global_location_id(aomScenarioData.POTG_2.id, 43), "Capture the Southern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_2_OPT_3 = (global_location_id(aomScenarioData.POTG_2.id, 41), "Capture the Northern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_2_OPT_4 = (global_location_id(aomScenarioData.POTG_2.id, 42), "Capture the Southern Camp.", aomScenarioData.POTG_2, aomLocationType.OPTIONAL_OBJECTIVE)
     #POTG_3: POTG 3. Stronger Together
-    POTG_3_OPT_1 = (global_location_id(aomScenarioData.POTG_3.id, 40), "Connect two buildings to the Favoured Land.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_3_OPT_2 = (global_location_id(aomScenarioData.POTG_3.id, 41), "Destroy the East Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
-    POTG_3_OPT_3 = (global_location_id(aomScenarioData.POTG_3.id, 42), "Capture the West Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_3_OPT_2 = (global_location_id(aomScenarioData.POTG_3.id, 40), "Destroy the East Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
+    POTG_3_OPT_3 = (global_location_id(aomScenarioData.POTG_3.id, 41), "Capture the West Camp.", aomScenarioData.POTG_3, aomLocationType.OPTIONAL_OBJECTIVE)
     #POTG_4: POTG 4. The God Trap
     POTG_4_OPT_1 = (global_location_id(aomScenarioData.POTG_4.id, 40), "Liberate Allies from Chiyou's Scouts.", aomScenarioData.POTG_4, aomLocationType.OPTIONAL_OBJECTIVE)
     POTG_4_OPT_2 = (global_location_id(aomScenarioData.POTG_4.id, 41), "Find Shennong's Statues.", aomScenarioData.POTG_4, aomLocationType.OPTIONAL_OBJECTIVE)
